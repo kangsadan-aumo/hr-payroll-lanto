@@ -1,0 +1,23 @@
+{
+    "name": "hr-payroll-backend",
+    "version": "1.0.0",
+    "description": "API for HR & Payroll System",
+    "main": "server.js",
+    "type": "module",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "nodemon server.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "dayjs": "^1.11.10",
+        "dotenv": "^16.4.5",
+        "exceljs": "^4.4.0",
+        "express": "^4.19.2",
+        "multer": "^2.1.1",
+        "mysql2": "^3.9.0"
+    },
+    "devDependencies": {
+        "nodemon": "^3.1.0"
+    }
+}

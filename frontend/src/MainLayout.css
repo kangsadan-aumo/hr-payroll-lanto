@@ -1,0 +1,14 @@
+.sidebar-logo {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    margin-bottom: 16px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.trigger:hover {
+    color: #1890ff;
+}
