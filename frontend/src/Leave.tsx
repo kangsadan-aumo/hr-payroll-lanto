@@ -45,6 +45,7 @@ export const Leave: React.FC = () => {
     // Filter states
     const [searchText, setSearchText] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [dateRangeFilter, setDateRangeFilter] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
 
     // Modal states
     const [isRequestModalVisible, setIsRequestModalVisible] = useState(false);
@@ -87,7 +88,16 @@ export const Leave: React.FC = () => {
         const matchSearch = req.employee_name.toLowerCase().includes(searchText.toLowerCase()) ||
             (req.department && req.department.toLowerCase().includes(searchText.toLowerCase()));
         const matchStatus = statusFilter === 'all' || req.status === statusFilter;
-        return matchSearch && matchStatus;
+        
+        let matchDate = true;
+        if (dateRangeFilter) {
+            const start = dateRangeFilter[0].startOf('day');
+            const end = dateRangeFilter[1].endOf('day');
+            const reqDate = dayjs(req.start_date);
+            matchDate = reqDate.isBetween(start, end, 'day', '[]');
+        }
+        
+        return matchSearch && matchStatus && matchDate;
     });
 
     // Form submission
@@ -341,6 +351,12 @@ export const Leave: React.FC = () => {
                             <Option value="approved">อนุมัติแล้ว</Option>
                             <Option value="rejected">ไม่อนุมัติ</Option>
                         </Select>
+                        <RangePicker 
+                            style={{ width: 280 }} 
+                            placeholder={['วันเริ่มต้น', 'วันสิ้นสุด']}
+                            onChange={(dates) => setDateRangeFilter(dates as any)}
+                            allowClear
+                        />
                     </Space>
                     <Text type="secondary">พบข้อมูล {filteredLeaves.length} รายการ</Text>
                 </div>

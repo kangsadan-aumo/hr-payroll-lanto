@@ -51,17 +51,19 @@ export const Settings: React.FC = () => {
 
             // Set Company Info
             const s = settingsRes.data;
+            console.log('Fetched Settings:', s);
             companyForm.setFieldsValue({
-                company_name: s.company_name,
-                taxId: s.tax_id,
-                address: s.address,
-                deductExcessSickLeave: s.deduct_excess_sick_leave,
-                deductExcessPersonalLeave: s.deduct_excess_personal_leave,
-                latePenaltyPerMin: s.late_penalty_per_minute,
-                autoDeductTax: s.auto_deduct_tax,
-                autoDeductSso: s.auto_deduct_sso,
-                payrollCutoffDate: s.payroll_cutoff_date,
-                diligenceAllowance: s.diligence_allowance
+                company_name: s.company_name || '',
+                taxId: s.tax_id || '',
+                branch_code: s.branch_code || '00000',
+                address: s.address || '',
+                deductExcessSickLeave: Boolean(Number(s.deduct_excess_sick_leave)),
+                deductExcessPersonalLeave: Boolean(Number(s.deduct_excess_personal_leave)),
+                latePenaltyPerMin: Number(s.late_penalty_per_minute) || 0,
+                autoDeductTax: Boolean(Number(s.auto_deduct_tax)),
+                autoDeductSso: Boolean(Number(s.auto_deduct_sso)),
+                payrollCutoffDate: s.payroll_cutoff_date || 25,
+                diligenceAllowance: Number(s.diligence_allowance) || 0
             });
 
             // Set Others
@@ -87,17 +89,19 @@ export const Settings: React.FC = () => {
             const payload = {
                 company_name: values.company_name,
                 tax_id: values.taxId,
+                branch_code: values.branch_code,
                 address: values.address,
-                deduct_excess_sick_leave: values.deductExcessSickLeave,
-                deduct_excess_personal_leave: values.deductExcessPersonalLeave,
-                late_penalty_per_minute: values.latePenaltyPerMin,
-                auto_deduct_tax: values.autoDeductTax,
-                auto_deduct_sso: values.autoDeductSso,
+                deduct_excess_sick_leave: !!values.deductExcessSickLeave,
+                deduct_excess_personal_leave: !!values.deductExcessPersonalLeave,
+                late_penalty_per_minute: values.latePenaltyPerMin ?? 0,
+                auto_deduct_tax: !!values.autoDeductTax,
+                auto_deduct_sso: !!values.autoDeductSso,
                 payroll_cutoff_date: values.payrollCutoffDate,
-                diligence_allowance: values.diligenceAllowance
+                diligence_allowance: values.diligenceAllowance ?? 0
             };
             await axios.put(`${API_BASE}/settings`, payload);
             message.success('อัปเดตข้อมูลบริษัทและนโยบายสำเร็จ');
+            fetchAllData();
         } catch (error) {
             message.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
         }
@@ -168,11 +172,25 @@ export const Settings: React.FC = () => {
         } catch (error) { message.error('เกิดข้อผิดพลาดในการลบอายุงาน'); }
     };
 
+    const handleRecalculateAllQuotas = async () => {
+        try {
+            setLoading(true);
+            await axios.post(`${API_BASE}/employees/recalculate-all-quotas`);
+            message.success('คำนวณโควตาวันลาให้พนักงานทุกคนสำเร็จตามกฎบริษัท');
+            fetchAllData();
+        } catch (error) {
+            message.error('เกิดข้อผิดพลาดในการคำนวณโควตา');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Other Leaves (Types)
     const handleSaveLeaveType = async (values: any) => {
         const payload = {
             leaveName: values.leaveName,
-            isDeductSalary: values.isDeductSalary
+            isDeductSalary: values.isDeductSalary,
+            daysPerYear: values.daysPerYear
         };
 
         try {
@@ -274,6 +292,7 @@ export const Settings: React.FC = () => {
 
     const leaveTypeColumns = [
         { title: 'ประเภทการลา', dataIndex: 'leaveName', key: 'leaveName' },
+        { title: 'จำนวนวันที่ลาได้ (วัน/ปี)', dataIndex: 'daysPerYear', key: 'daysPerYear', render: (val: number) => val > 0 ? `${val} วัน` : 'ไม่จำกัด (หรือตามเกณฑ์อายุงาน)' },
         { title: 'หักเงินเดือนหรือไม่', dataIndex: 'isDeductSalary', key: 'isDeductSalary', render: (val: boolean) => val ? <Tag color="error">หักเงิน (Unpaid)</Tag> : <Tag color="success">ไม่หักเงิน (Paid)</Tag> },
         {
             title: 'จัดการ', key: 'action', align: 'center' as const, render: (_: any, record: any) => (
@@ -282,7 +301,8 @@ export const Settings: React.FC = () => {
                         setEditingLeaveTypeId(record.id);
                         leaveTypeForm.setFieldsValue({
                             leaveName: record.leaveName,
-                            isDeductSalary: record.isDeductSalary
+                            isDeductSalary: record.isDeductSalary,
+                            daysPerYear: record.daysPerYear
                         });
                         setIsLeaveTypeModalOpen(true);
                     }} />
@@ -304,9 +324,10 @@ export const Settings: React.FC = () => {
         }
     ];
 
-    if (loading) {
-        return <div style={{ textAlign: 'center', marginTop: 100 }}><Spin size="large" /></div>;
-    }
+    // (Removed conditional return to prevent unmounting form)
+    // if (loading) {
+    //     return <div style={{ textAlign: 'center', marginTop: 100 }}><Spin size="large" /></div>;
+    // }
 
     return (
         <div>
@@ -316,6 +337,7 @@ export const Settings: React.FC = () => {
             </div>
 
             <Card bordered={false} style={{ borderRadius: 8, minHeight: 'calc(100vh - 160px)' }}>
+              <Spin spinning={loading} size="large">
                 <Tabs defaultActiveKey="1" tabPosition="left">
                     <TabPane tab={<span><BankOutlined /> ข้อมูลบริษัท & นโยบาย</span>} key="1">
                         <div style={{ maxWidth: 800, paddingLeft: 24 }}>
@@ -323,14 +345,19 @@ export const Settings: React.FC = () => {
                             <Divider style={{ margin: '12px 0 24px 0' }} />
                             <Form form={companyForm} layout="vertical" onFinish={onSaveCompanyInfo}>
                                 <Row gutter={16}>
-                                    <Col span={12}>
+                                    <Col span={10}>
                                         <Form.Item name="company_name" label="ชื่อบริษัท" rules={[{ required: true }]}>
                                             <Input placeholder="ระบุชื่อบริษัท" />
                                         </Form.Item>
                                     </Col>
-                                    <Col span={12}>
+                                    <Col span={8}>
                                         <Form.Item name="taxId" label="หมายเลขผู้เสียภาษี">
                                             <Input placeholder="ระบุหมายเลข 13 หลัก" />
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={6}>
+                                        <Form.Item name="branch_code" label="รหัสสาขา (Branch Code)">
+                                            <Input placeholder="00000" maxLength={5} />
                                         </Form.Item>
                                     </Col>
                                 </Row>
@@ -421,7 +448,10 @@ export const Settings: React.FC = () => {
                         <div style={{ paddingLeft: 24, maxWidth: 800 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                                 <Title level={4}>วันหยุดพักผ่อนประจำปีตามอายุงาน</Title>
-                                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingLeaveRuleId(null); leaveRuleForm.resetFields(); setIsLeaveRuleModalOpen(true); }}>เพิ่มเกณฑ์ใหม่</Button>
+                                <Space>
+                                    <Button icon={<SafetyCertificateOutlined />} onClick={handleRecalculateAllQuotas}>คำนวณโควตาทุกคนตามระบบ</Button>
+                                    <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingLeaveRuleId(null); leaveRuleForm.resetFields(); setIsLeaveRuleModalOpen(true); }}>เพิ่มเกณฑ์ใหม่</Button>
+                                </Space>
                             </div>
                             <Table columns={leaveRuleColumns} dataSource={leaveRules} rowKey="id" pagination={false} bordered />
                         </div>
@@ -448,6 +478,7 @@ export const Settings: React.FC = () => {
                     </TabPane>
 
                 </Tabs>
+              </Spin>
             </Card>
 
             {/* Shift Modal */}
@@ -488,8 +519,9 @@ export const Settings: React.FC = () => {
 
             {/* Leave Type Modal */}
             <Modal title={editingLeaveTypeId ? "แก้ไขประเภทการลา" : "เพิ่มประเภทการลา"} open={isLeaveTypeModalOpen} onOk={() => leaveTypeForm.submit()} onCancel={() => setIsLeaveTypeModalOpen(false)}>
-                <Form form={leaveTypeForm} layout="vertical" onFinish={handleSaveLeaveType} initialValues={{ isDeductSalary: false }}>
+                <Form form={leaveTypeForm} layout="vertical" onFinish={handleSaveLeaveType} initialValues={{ isDeductSalary: false, daysPerYear: 0 }}>
                     <Form.Item name="leaveName" label="ชื่อประเภทการลา" rules={[{ required: true }]}><Input /></Form.Item>
+                    <Form.Item name="daysPerYear" label="จำนวนวันลาที่อนุญาตต่อปี (0 = ไม่จำกัด)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
                     <Form.Item name="isDeductSalary" valuePropName="checked" label="ตั้งค่าการหักเงิน">
                         <Switch checkedChildren="หักเงิน" unCheckedChildren="ไม่หักเงิน" />
                     </Form.Item>

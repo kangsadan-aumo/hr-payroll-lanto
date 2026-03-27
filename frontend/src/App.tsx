@@ -12,6 +12,7 @@ import { Analytics } from './Analytics';
 import { HRCalendarView } from './HRCalendarView';
 import { AuditLogs } from './AuditLogs';
 import { GovReports } from './GovReports';
+import { Overtime } from './Overtime';
 import './App.css';
 
 function App() {
@@ -47,6 +48,8 @@ function App() {
         return <AuditLogs />;
       case 'gov-reports':
         return <GovReports />;
+      case 'overtime':
+        return <Overtime />;
       case 'settings':
         return <Settings />;
       default:

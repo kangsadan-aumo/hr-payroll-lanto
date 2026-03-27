@@ -34,6 +34,18 @@ export const GovReports: React.FC = () => {
         window.open(`http://localhost:5000/api/reports/pnd1?month=${month}&year=${year}`, '_blank');
     };
 
+    const downloadPND1Csv = () => {
+        window.open(`http://localhost:5000/api/reports/pnd1-csv?month=${month}&year=${year}`, '_blank');
+    };
+
+    const downloadPND3Csv = () => {
+        window.open(`http://localhost:5000/api/reports/pnd3-csv?month=${month}&year=${year}`, '_blank');
+    };
+
+    const downloadPND53Csv = () => {
+        window.open(`http://localhost:5000/api/reports/pnd53-csv?month=${month}&year=${year}`, '_blank');
+    };
+
     const downloadSSO = () => {
         window.open(`http://localhost:5000/api/reports/sso?month=${month}&year=${year}`, '_blank');
     };
@@ -71,17 +83,38 @@ export const GovReports: React.FC = () => {
                                 </Select>
                             </Space>
                             <Row gutter={16}>
-                                <Col span={12}>
+                                <Col span={8}>
                                     <Button type="primary" block icon={<DownloadOutlined />} onClick={downloadPND1}>
-                                        พ.ง.ด. 1
+                                        พ.ง.ด. 1 (Excel)
                                     </Button>
-                                    <Text type="secondary" style={{ fontSize: 12 }}>ยื่นภาษีเงินได้หัก ณ ที่จ่าย</Text>
+                                    <Text type="secondary" style={{ fontSize: 10 }}>ยื่นภาษี (Excel)</Text>
                                 </Col>
-                                <Col span={12}>
+                                <Col span={8}>
+                                    <Button type="default" block icon={<DownloadOutlined />} onClick={downloadPND1Csv} style={{ borderColor: '#fa8c16', color: '#fa8c16' }}>
+                                        พ.ง.ด. 1 (CSV)
+                                    </Button>
+                                    <Text type="secondary" style={{ fontSize: 10 }}>สำหรับ RdPrep</Text>
+                                </Col>
+                                <Col span={8}>
                                     <Button type="primary" block icon={<DownloadOutlined />} onClick={downloadSSO} style={{ backgroundColor: '#1890ff' }}>
                                         สปส. 1-10
                                     </Button>
-                                    <Text type="secondary" style={{ fontSize: 12 }}>ยื่นสมทบประกันสังคม</Text>
+                                    <Text type="secondary" style={{ fontSize: 10 }}>ยื่นประกันสังคม</Text>
+                                </Col>
+                            </Row>
+
+                            <Row gutter={16} style={{ marginTop: 16 }}>
+                                <Col span={8}>
+                                    <Button type="default" block icon={<DownloadOutlined />} onClick={downloadPND3Csv} style={{ borderColor: '#eb2f96', color: '#eb2f96' }}>
+                                        พ.ง.ด. 3 (CSV)
+                                    </Button>
+                                    <Text type="secondary" style={{ fontSize: 10 }}>สำหรับ RdPrep</Text>
+                                </Col>
+                                <Col span={8}>
+                                    <Button type="default" block icon={<DownloadOutlined />} onClick={downloadPND53Csv} style={{ borderColor: '#722ed1', color: '#722ed1' }}>
+                                        พ.ง.ด. 53 (CSV)
+                                    </Button>
+                                    <Text type="secondary" style={{ fontSize: 10 }}>สำหรับ RdPrep</Text>
                                 </Col>
                             </Row>
                         </Space>

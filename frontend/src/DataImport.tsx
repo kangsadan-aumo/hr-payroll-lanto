@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Row, Col, Card, Upload, Statistic, Typography, Table, Space, Tag, Input,
-    message, Button, DatePicker, Modal, Calendar, Badge, Tooltip, Alert
+    message, Button, DatePicker, Modal, Calendar, Badge, Tooltip, Alert, Select
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
@@ -20,6 +20,7 @@ dayjs.extend(isSameOrBefore);
 
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
+const { Option } = Select;
 
 const API = 'http://localhost:5000/api';
 
@@ -41,6 +42,8 @@ export const DataImport: React.FC = () => {
     const [dbLogs, setDbLogs] = useState<any[]>([]);
     const [dbLoading, setDbLoading] = useState(false);
     const [dbMonth, setDbMonth] = useState<dayjs.Dayjs | null>(dayjs());
+    const [dbDay, setDbDay] = useState<dayjs.Dayjs | null>(dayjs());
+    const [viewMode, setViewMode] = useState<'monthly' | 'daily'>('monthly');
     const [dbSearch, setDbSearch] = useState('');
 
     // ── Upload Modal state ──
@@ -414,6 +417,16 @@ export const DataImport: React.FC = () => {
         r.department.toLowerCase().includes(dbSearch.toLowerCase())
     );
 
+    const filteredDbLogs = useMemo(() => {
+        if (viewMode === 'monthly') return [];
+        return dbLogs.filter(log => {
+            const matchSearch = log.employee_name?.toLowerCase().includes(dbSearch.toLowerCase()) ||
+                               log.employee_code?.toLowerCase().includes(dbSearch.toLowerCase());
+            const matchDay = dbDay ? dayjs(log.check_in_time).isSame(dbDay, 'day') : true;
+            return matchSearch && matchDay;
+        });
+    }, [dbLogs, dbSearch, dbDay, viewMode]);
+
     const dbLateCount = dbSummary.reduce((s, r) => s + r.lateCount, 0);
     const dbWorkDays = dbSummary.reduce((s, r) => s + r.workDays, 0);
     const dbWeekends = dbSummary.reduce((s, r) => s + (r.weekends ?? 0), 0);
@@ -475,6 +488,24 @@ export const DataImport: React.FC = () => {
         },
     ];
 
+    const dailyColumns = [
+        { title: 'รหัสพนักงาน', dataIndex: 'employee_code', key: 'employee_code', width: 110 },
+        { title: 'ชื่อ-นามสกุล', dataIndex: 'employee_name', key: 'employee_name' },
+        { title: 'แผนก', dataIndex: 'department', key: 'department' },
+        { title: 'เวลาเข้า', dataIndex: 'check_in_time', key: 'check_in_time', render: (v: string) => v ? dayjs(v).format('HH:mm') : '-' },
+        { title: 'เวลาออก', dataIndex: 'check_out_time', key: 'check_out_time', render: (v: string) => v ? dayjs(v).format('HH:mm') : '-' },
+        { 
+            title: 'สถานะ', dataIndex: 'status', key: 'status',
+            render: (s: string) => {
+                if (s === 'late') return <Tag color="orange">สาย</Tag>;
+                if (s === 'on_time') return <Tag color="success">ปกติ</Tag>;
+                return <Tag>{s}</Tag>;
+            }
+        },
+        { title: 'สาย (นาที)', dataIndex: 'late_minutes', key: 'late_minutes', render: (v: number) => v > 0 ? <Text type="danger">{v}</Text> : 0 },
+        { title: 'กะที่ตรวจพบ', dataIndex: 'detected_shift_name', key: 'detected_shift_name' },
+    ];
+
     return (
         <div>
             {/* ── Header ── */}
@@ -504,12 +535,23 @@ export const DataImport: React.FC = () => {
                 {/* Filter */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
                     <Space>
-                        <Text strong>เดือน:</Text>
-                        <DatePicker picker="month" value={dbMonth} onChange={setDbMonth} allowClear={false} />
+                        <Select 
+                            value={viewMode} 
+                            onChange={(val: any) => setViewMode(val)} 
+                            style={{ width: 140 }}
+                        >
+                            <Option value="monthly">ดูแบบรายเดือน</Option>
+                            <Option value="daily">ดูแบบรายวัน</Option>
+                        </Select>
+                        {viewMode === 'monthly' ? (
+                            <DatePicker picker="month" value={dbMonth} onChange={setDbMonth} allowClear={false} />
+                        ) : (
+                            <DatePicker value={dbDay} onChange={setDbDay} allowClear={false} placeholder="เลือกวันที่" />
+                        )}
                         <Button icon={<SyncOutlined />} onClick={fetchDbAttendance} loading={dbLoading}>รีโหลด</Button>
                     </Space>
                     <Input
-                        placeholder="ค้นหาพนักงาน" prefix={<SearchOutlined />}
+                        placeholder="ค้นหาพนักงาน / แผนก" prefix={<SearchOutlined />}
                         style={{ width: 250 }} value={dbSearch}
                         onChange={e => setDbSearch(e.target.value)} allowClear
                     />
@@ -541,17 +583,26 @@ export const DataImport: React.FC = () => {
                 </Row>
 
                 {/* Table or Empty State */}
-                {dbSummary.length === 0 && !dbLoading ? (
-                    <div style={{ textAlign: 'center', padding: '60px 0', color: '#999',  background: '#fafafa', borderRadius: 8 }}>
-                        <DatabaseOutlined style={{ fontSize: 48, marginBottom: 16, color: '#d9d9d9' }} />
-                        <div style={{ fontSize: 16, fontWeight: 500, color: '#666', marginBottom: 8 }}>ยังไม่มีข้อมูลการเข้างานสำหรับเดือนนี้</div>
-                        <Text type="secondary">โปรดกดปุ่ม <b>นำเข้าไฟล์ CSV</b> มุมขวาบนเพื่ออัปโหลดข้อมูลจากเครื่องสแกน</Text>
-                    </div>
+                {viewMode === 'monthly' ? (
+                    dbSummary.length === 0 && !dbLoading ? (
+                        <div style={{ textAlign: 'center', padding: '60px 0', color: '#999',  background: '#fafafa', borderRadius: 8 }}>
+                            <DatabaseOutlined style={{ fontSize: 48, marginBottom: 16, color: '#d9d9d9' }} />
+                            <div style={{ fontSize: 16, fontWeight: 500, color: '#666', marginBottom: 8 }}>ยังไม่มีข้อมูลการเข้างานสำหรับเดือนนี้</div>
+                            <Text type="secondary">โปรดกดปุ่ม <b>นำเข้าไฟล์ CSV</b> มุมขวาบนเพื่ออัปโหลดข้อมูลจากเครื่องสแกน</Text>
+                        </div>
+                    ) : (
+                        <Table
+                            dataSource={filteredDbSummary} columns={dbColumns}
+                            rowKey="employeeId" loading={dbLoading}
+                            pagination={{ pageSize: 15 }} bordered size="middle"
+                            scroll={{ x: 1000 }}
+                        />
+                    )
                 ) : (
                     <Table
-                        dataSource={filteredDbSummary} columns={dbColumns}
-                        rowKey="employeeId" loading={dbLoading}
-                        pagination={{ pageSize: 15 }} bordered size="middle"
+                        dataSource={filteredDbLogs} columns={dailyColumns}
+                        rowKey="id" loading={dbLoading}
+                        pagination={{ pageSize: 20 }} bordered size="middle"
                         scroll={{ x: 1000 }}
                     />
                 )}

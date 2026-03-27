@@ -116,7 +116,7 @@ function calculateIncomeTax(baseSalary, allowances = {}) {
 // ─────────────────────────────────────────────
 function calculateOTPay(baseSalary, hours, multiplier) {
     // ฐานคำนวณ: (เงินเดือน / 30 / 8) * ชั่วโมง * ตัวคูณ
-    const hourlyRate = (baseSalary / 30 / 8);
+    const hourlyRate = baseSalary / 30 / 8;
     return Math.floor(hourlyRate * hours * multiplier);
 }
 
@@ -293,27 +293,7 @@ app.get('/api/departments', async (req, res) => {
 // ─────────────────────────────────────────────
 // SETTINGS
 // ─────────────────────────────────────────────
-app.get('/api/settings', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM system_settings LIMIT 1');
-        res.json(rows[0] || {});
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.put('/api/settings', async (req, res) => {
-    try {
-        const payload = req.body;
-        await pool.query(
-            `UPDATE system_settings SET company_name=?, tax_id=?, address=?, deduct_excess_sick_leave=?, deduct_excess_personal_leave=?, late_penalty_per_minute=?, auto_deduct_tax=?, auto_deduct_sso=?, payroll_cutoff_date=?, diligence_allowance=? WHERE id=1`,
-            [payload.company_name, payload.tax_id, payload.address, payload.deduct_excess_sick_leave, payload.deduct_excess_personal_leave, payload.late_penalty_per_minute, payload.auto_deduct_tax, payload.auto_deduct_sso, payload.payroll_cutoff_date, payload.diligence_allowance]
-        );
-        res.json({ message: 'Settings updated' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+// (Settings moved to bottom)
 
 // ─────────────────────────────────────────────
 // EMPLOYEES
@@ -330,7 +310,11 @@ app.get('/api/employees', async (req, res) => {
         const formatted = rows.map(r => ({
             id: r.id.toString(),
             employee_code: r.employee_code,
-            name: `${r.first_name} ${r.last_name}`,
+            title: r.title || 'นาย',
+            first_name: r.first_name,
+            last_name: r.last_name,
+            middle_name: r.middle_name || '',
+            name: `${r.title || ''} ${r.first_name} ${r.last_name}`.trim(),
             department: r.department_name || 'ไม่ระบุ',
             position: r.position || '-',
             joinDate: r.join_date,
@@ -339,9 +323,29 @@ app.get('/api/employees', async (req, res) => {
             email: r.email || `${r.employee_code}@company.com`,
             baseSalary: r.base_salary,
             id_number: r.id_number,
+            tax_form: r.tax_form || 'pnd1',
+            branch_code: r.branch_code || '00000',
+            address_building: r.address_building || '',
+            address_room: r.address_room || '',
+            address_floor: r.address_floor || '',
+            address_village: r.address_village || '',
+            address_no: r.address_no || '',
+            address_moo: r.address_moo || '',
+            address_soi: r.address_soi || '',
+            address_yaek: r.address_yaek || '',
+            address_road: r.address_road || '',
+            address_subdistrict: r.address_subdistrict || '',
+            address_district: r.address_district || '',
+            address_province: r.address_province || '',
+            address_zipcode: r.address_zipcode || '',
+            pnd3_income_type: r.pnd3_income_type || '40(2)',
+            pnd3_tax_rate: r.pnd3_tax_rate || 3.00,
             shift_id: r.shift_id,
             shift_name: r.shift_name,
-            shift_start_time: r.shift_start_time
+            shift_start_time: r.shift_start_time,
+            probation_end_date: r.probation_end_date,
+            contract_end_date: r.contract_end_date,
+            notes: r.notes
         }));
         res.json(formatted);
     } catch (error) {
@@ -351,12 +355,23 @@ app.get('/api/employees', async (req, res) => {
 
 app.post('/api/employees', async (req, res) => {
     try {
-        const { employee_code, first_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number } = req.body;
+        const { 
+            employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
+            tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
+            pnd3_income_type, pnd3_tax_rate
+        } = req.body;
         const code = employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
         const [result] = await pool.query(
-            `INSERT INTO employees (employee_code, first_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [code, first_name, last_name, department_id, shift_id || null, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null]
+            `INSERT INTO employees (
+                employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
+                tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
+                pnd3_income_type, pnd3_tax_rate
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                code, title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null,
+                tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
+                pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00
+            ]
         );
         res.status(201).json({ id: result.insertId, message: 'Employee created' });
     } catch (error) {
@@ -367,10 +382,22 @@ app.post('/api/employees', async (req, res) => {
 app.put('/api/employees/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { first_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number } = req.body;
+        const { 
+            title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
+            tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
+            pnd3_income_type, pnd3_tax_rate
+        } = req.body;
         const [result] = await pool.query(
-            `UPDATE employees SET first_name=?, last_name=?, department_id=?, shift_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-            [first_name, last_name, department_id, shift_id || null, position, join_date, status, base_salary, phone || null, email || null, id_number || null, id]
+            `UPDATE employees SET 
+                title=?, first_name=?, middle_name=?, last_name=?, department_id=?, shift_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?,
+                tax_form=?, branch_code=?, address_building=?, address_room=?, address_floor=?, address_village=?, address_no=?, address_moo=?, address_soi=?, address_yaek=?, address_road=?, address_subdistrict=?, address_district=?, address_province=?, address_zipcode=?,
+                pnd3_income_type=?, pnd3_tax_rate=?, updated_at=CURRENT_TIMESTAMP 
+             WHERE id=?`,
+            [
+                title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, status, base_salary, phone || null, email || null, id_number || null,
+                tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
+                pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, id
+            ]
         );
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ message: 'Employee updated' });
@@ -473,6 +500,55 @@ app.put('/api/employees/:id/leave-quotas', async (req, res) => {
             }
         }
         res.json({ message: 'บันทึกโควตาวันลาสำเร็จ' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/employees/recalculate-all-quotas', async (req, res) => {
+    try {
+        // 1. Get all vacation rules and sort DESC
+        const [rules] = await pool.query('SELECT * FROM leave_quota_rules ORDER BY tenure_years DESC');
+        
+        // 2. Get all leave types that have a fixed days_per_year > 0
+        const [fixedTypes] = await pool.query('SELECT * FROM leave_types WHERE days_per_year > 0 AND id != 3');
+
+        // 3. Get all active employees
+        const [employees] = await pool.query('SELECT id, join_date FROM employees WHERE status = "active"');
+        
+        const now = dayjs();
+        let updatedCount = 0;
+
+        for (const emp of employees) {
+            // A. Calculate Vacation (based on tenure)
+            let vacationQuota = 0;
+            if (emp.join_date) {
+                const joinDate = dayjs(emp.join_date);
+                const tenureYears = Math.floor(now.diff(joinDate, 'year', true));
+                const applicableRule = rules.find(r => tenureYears >= r.tenure_years);
+                vacationQuota = applicableRule ? applicableRule.vacation_days : 0;
+            }
+
+            // UPSERT Vacation (ID 3)
+            await pool.query(`
+                INSERT INTO employee_leave_quotas (employee_id, leave_type_id, quota_days)
+                VALUES (?, 3, ?)
+                ON DUPLICATE KEY UPDATE quota_days = VALUES(quota_days)
+            `, [emp.id, vacationQuota]);
+
+            // B. Apply fixed limits for other types (Personal Leave, Sick Leave, etc.)
+            for (const lt of fixedTypes) {
+                await pool.query(`
+                    INSERT INTO employee_leave_quotas (employee_id, leave_type_id, quota_days)
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE quota_days = VALUES(quota_days)
+                `, [emp.id, lt.id, lt.days_per_year]);
+            }
+            
+            updatedCount++;
+        }
+
+        res.json({ message: `คำนวณโควตาวันลาใหม่สำเร็จสำหรับ ${updatedCount} คน` });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -621,6 +697,50 @@ app.post('/api/leaves/import', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// OVERTIME REQUESTS
+// ─────────────────────────────────────────────
+app.get('/api/overtime/requests', async (req, res) => {
+    try {
+        const [rows] = await pool.query(`
+            SELECT orq.*, CONCAT(e.first_name, ' ', e.last_name) as employee_name,
+                   d.name as department
+            FROM overtime_requests orq
+            JOIN employees e ON orq.employee_id = e.id
+            LEFT JOIN departments d ON e.department_id = d.id
+            ORDER BY orq.date DESC, orq.id DESC
+        `);
+        res.json(rows.map(r => ({ ...r, id: r.id.toString(), hours: parseFloat(r.hours), multiplier: parseFloat(r.multiplier) })));
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/overtime/requests', async (req, res) => {
+    try {
+        const { employee_id, date, hours, multiplier, reason } = req.body;
+        const [result] = await pool.query(
+            'INSERT INTO overtime_requests (employee_id, date, hours, multiplier, reason, status) VALUES (?, ?, ?, ?, ?, ?)',
+            [employee_id, date, hours, multiplier, reason, 'approved']
+        );
+        res.status(201).json({ id: result.insertId.toString(), message: 'OT request created' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/overtime/requests/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        await pool.query('UPDATE overtime_requests SET status = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?', [status, id]);
+        res.json({ message: 'Status updated' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/overtime/requests/:id', async (req, res) => {
+    try {
+        await pool.query('DELETE FROM overtime_requests WHERE id = ?', [req.params.id]);
+        res.json({ message: 'Deleted' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ─────────────────────────────────────────────
 // SHIFTS
 // ─────────────────────────────────────────────
 app.get('/api/shifts', async (req, res) => {
@@ -698,20 +818,20 @@ app.delete('/api/leave-rules/:id', async (req, res) => {
 app.get('/api/leave-types', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM leave_types ORDER BY id ASC');
-        res.json(rows.map(r => ({ id: r.id.toString(), leaveName: r.name, isDeductSalary: r.is_unpaid })));
+        res.json(rows.map(r => ({ id: r.id.toString(), leaveName: r.name, isDeductSalary: r.is_unpaid, daysPerYear: r.days_per_year })));
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/leave-types', async (req, res) => {
     try {
-        const [result] = await pool.query('INSERT INTO leave_types (name, is_unpaid) VALUES (?, ?)', [req.body.leaveName, req.body.isDeductSalary]);
+        const [result] = await pool.query('INSERT INTO leave_types (name, is_unpaid, days_per_year) VALUES (?, ?, ?)', [req.body.leaveName, req.body.isDeductSalary, req.body.daysPerYear || 0]);
         res.status(201).json({ id: result.insertId.toString() });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.put('/api/leave-types/:id', async (req, res) => {
     try {
-        await pool.query('UPDATE leave_types SET name=?, is_unpaid=? WHERE id=?', [req.body.leaveName, req.body.isDeductSalary, req.params.id]);
+        await pool.query('UPDATE leave_types SET name=?, is_unpaid=?, days_per_year=? WHERE id=?', [req.body.leaveName, req.body.isDeductSalary, req.body.daysPerYear || 0, req.params.id]);
         res.json({ message: 'Updated' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -733,20 +853,41 @@ app.get('/api/settings', async (req, res) => {
 
 app.put('/api/settings', async (req, res) => {
     try {
-        const { company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
-            late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance } = req.body;
+        const { 
+            company_name = '', 
+            tax_id = '', 
+            branch_code = '00000', 
+            address = '', 
+            deduct_excess_sick_leave = 0, 
+            deduct_excess_personal_leave = 0,
+            late_penalty_per_minute = 0, 
+            auto_deduct_tax = 0, 
+            auto_deduct_sso = 0, 
+            payroll_cutoff_date = 25, 
+            diligence_allowance = 0 
+        } = req.body;
+        
         await pool.query(`
-            UPDATE system_settings SET 
-                company_name=COALESCE(?, company_name), tax_id=COALESCE(?, tax_id), address=COALESCE(?, address),
-                deduct_excess_sick_leave=COALESCE(?, deduct_excess_sick_leave),
-                deduct_excess_personal_leave=COALESCE(?, deduct_excess_personal_leave),
-                late_penalty_per_minute=COALESCE(?, late_penalty_per_minute),
-                auto_deduct_tax=COALESCE(?, auto_deduct_tax), auto_deduct_sso=COALESCE(?, auto_deduct_sso),
-                payroll_cutoff_date=COALESCE(?, payroll_cutoff_date),
-                diligence_allowance=COALESCE(?, diligence_allowance),
+            INSERT INTO system_settings 
+            (id, company_name, tax_id, branch_code, address, deduct_excess_sick_leave, deduct_excess_personal_leave, late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                company_name=VALUES(company_name), tax_id=VALUES(tax_id), branch_code=VALUES(branch_code), address=VALUES(address),
+                deduct_excess_sick_leave=VALUES(deduct_excess_sick_leave), deduct_excess_personal_leave=VALUES(deduct_excess_personal_leave),
+                late_penalty_per_minute=VALUES(late_penalty_per_minute), auto_deduct_tax=VALUES(auto_deduct_tax), auto_deduct_sso=VALUES(auto_deduct_sso),
+                payroll_cutoff_date=VALUES(payroll_cutoff_date), diligence_allowance=VALUES(diligence_allowance),
                 updated_at=CURRENT_TIMESTAMP
-        `, [company_name, tax_id, address, deduct_excess_sick_leave, deduct_excess_personal_leave,
-            late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance]);
+        `, [
+            company_name, tax_id, branch_code, address, 
+            deduct_excess_sick_leave ? 1 : 0, 
+            deduct_excess_personal_leave ? 1 : 0, 
+            late_penalty_per_minute, 
+            auto_deduct_tax ? 1 : 0, 
+            auto_deduct_sso ? 1 : 0, 
+            payroll_cutoff_date, 
+            diligence_allowance
+        ]);
+            
         res.json({ message: 'Settings updated' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
@@ -761,7 +902,7 @@ app.get('/api/payroll', async (req, res) => {
 
         // ลองดึงจาก payroll_records ก่อน
         const [saved] = await pool.query(`
-            SELECT pr.*, CONCAT(e.first_name, ' ', e.last_name) as name, e.employee_code,
+            SELECT pr.*, e.title, e.first_name, e.last_name, e.employee_code,
                    d.name as department, e.base_salary as emp_base_salary
             FROM payroll_records pr
             JOIN employees e ON pr.employee_id = e.id
@@ -774,7 +915,7 @@ app.get('/api/payroll', async (req, res) => {
             const result = saved.map(r => ({
                 employeeId: r.employee_code,
                 employee_id: r.employee_id,
-                name: r.name,
+                name: `${r.title || ''} ${r.first_name || ''} ${r.last_name || ''}`.trim(),
                 department: r.department || 'ไม่ระบุ',
                 baseSalary: parseFloat(r.base_salary),
                 earnings: {
@@ -804,7 +945,7 @@ app.get('/api/payroll', async (req, res) => {
         const autoDeductSSO = settings.auto_deduct_sso !== 0;
 
         const [employees] = await pool.query(`
-            SELECT e.id, e.employee_code, CONCAT(e.first_name, ' ', e.last_name) as name,
+            SELECT e.id, e.employee_code, e.title, e.first_name, e.last_name,
                    d.name as department, e.base_salary, e.shift_id,
                    e.spouse_allowance, e.children_count, e.parents_care_count,
                    e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate
@@ -885,7 +1026,7 @@ app.get('/api/payroll', async (req, res) => {
             return {
                 employeeId: e.employee_code,
                 employee_id: e.id,
-                name: e.name,
+                name: `${e.title || ''} ${e.first_name || ''} ${e.last_name || ''}`.trim(),
                 department: e.department || 'ไม่ระบุ',
                 baseSalary,
                 earnings: { overtime: totalOT, bonus: 0, diligenceAllowance: earnedDiligence, ot1_5_pay, ot2_pay, ot3_pay },
@@ -1524,6 +1665,26 @@ async function runMigrations() {
             FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
             UNIQUE(employee_id, date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS title VARCHAR(20) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS middle_name VARCHAR(100) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS tax_form VARCHAR(10) DEFAULT 'pnd1'`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS branch_code VARCHAR(10) DEFAULT '00000'`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_building VARCHAR(100) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_room VARCHAR(20) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_floor VARCHAR(10) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_village VARCHAR(100) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_no VARCHAR(50) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_moo VARCHAR(10) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_soi VARCHAR(50) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_yaek VARCHAR(50) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_road VARCHAR(50) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_subdistrict VARCHAR(100) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_district VARCHAR(100) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_province VARCHAR(100) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_zipcode VARCHAR(10) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS pnd3_income_type VARCHAR(50) DEFAULT '40(2)'`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS pnd3_tax_rate DECIMAL(5,2) DEFAULT 3.00`,
+        `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS branch_code VARCHAR(10) DEFAULT '00000'`,
     ];
     for (const sql of migrations) {
         try {
@@ -1533,6 +1694,17 @@ async function runMigrations() {
         }
     }
     console.log('✅ Database migrations done.');
+
+    // Ensure initial settings row exists
+    try {
+        const [rows] = await pool.query('SELECT id FROM system_settings LIMIT 1');
+        if (rows.length === 0) {
+            await pool.query('INSERT INTO system_settings (id, company_name) VALUES (1, "My Company")');
+            console.log('🌱 Initialized system_settings with ID 1');
+        }
+    } catch (err) {
+        console.warn('Could not initialize system_settings:', err.message);
+    }
 }
 
 // ─────────────────────────────────────────────
@@ -1626,6 +1798,191 @@ app.get('/api/reports/pnd1', async (req, res) => {
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get('/api/reports/pnd1-csv', async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        if (!month || !year) return res.status(400).json({ error: 'กรุณาระบุเดือนและปี' });
+
+        const [rows] = await pool.query(`
+            SELECT pr.*, e.title, e.first_name, e.middle_name, e.last_name, e.id_number, d.name as department
+            FROM payroll_records pr
+            JOIN employees e ON pr.employee_id = e.id
+            LEFT JOIN departments d ON e.department_id = d.id
+            WHERE pr.period_month = ? AND pr.period_year = ? AND pr.status = 'paid'
+            ORDER BY e.employee_code ASC
+        `, [month, year]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'ไม่พบข้อมูลการจ่ายเงินเดือนที่อนุมัติแล้วในเดือนนี้' });
+        }
+
+        // RdPrep Format: ลำดับที่|เลขประจำตัวผู้เสียภาษี|คำนำหน้าชื่อ|ชื่อ|ชื่อกลาง|นามสกุล|วันเดือนปี ที่จ่าย|เงินได้ตามมาตรา|จำนวนเงินที่จ่าย|จำนวนเงินภาษีที่หัก|เงื่อนไขการหัก
+        // Payment Date: assume current month/year, day 25 (or cutoff)
+        const [settings] = await pool.query('SELECT * FROM system_settings LIMIT 1');
+        const cutoffDay = settings[0]?.payroll_cutoff_date || 25;
+        
+        // Year in Thai BE: Year + 543
+        const thaiYear = parseInt(year) + 543;
+        const paymentDateStr = `${String(cutoffDay).padStart(2, '0')}/${String(month).padStart(2, '0')}/${thaiYear}`;
+
+        let csvContent = "";
+        rows.forEach((r, i) => {
+            const income = (parseFloat(r.base_salary) + parseFloat(r.overtime_pay) + parseFloat(r.bonus) + parseFloat(r.diligence_allowance)).toFixed(2);
+            const tax = parseFloat(r.tax_deduction).toFixed(2);
+            const line = [
+                i + 1,
+                r.id_number || '',
+                r.title || 'นาย',
+                r.first_name,
+                r.middle_name || '',
+                r.last_name,
+                paymentDateStr,
+                '40(1)',
+                income,
+                tax,
+                '1'
+            ].join('|');
+            csvContent += line + "\r\n";
+        });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=PND1_${month}_${year}.csv`);
+        res.send(csvContent);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/reports/pnd3-csv', async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        if (!month || !year) return res.status(400).json({ error: 'กรุณาระบุเดือนและปี' });
+
+        const [rows] = await pool.query(`
+            SELECT pr.*, e.*, d.name as department
+            FROM payroll_records pr
+            JOIN employees e ON pr.employee_id = e.id
+            LEFT JOIN departments d ON e.department_id = d.id
+            WHERE pr.period_month = ? AND pr.period_year = ? AND pr.status = 'paid' AND e.tax_form = 'pnd3'
+            ORDER BY e.employee_code ASC
+        `, [month, year]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'ไม่พบข้อมูล พ.ง.ด. 3 ที่อนุมัติแล้วในเดือนนี้' });
+        }
+
+        const [settings] = await pool.query('SELECT * FROM system_settings LIMIT 1');
+        const cutoffDay = settings[0]?.payroll_cutoff_date || 25;
+        const thaiYear = parseInt(year) + 543;
+        const paymentDateStr = `${String(cutoffDay).padStart(2, '0')}/${String(month).padStart(2, '0')}/${thaiYear}`;
+
+        let csvContent = "";
+        rows.forEach((r, i) => {
+            const income = (parseFloat(r.base_salary) + parseFloat(r.overtime_pay) + parseFloat(r.bonus) + parseFloat(r.diligence_allowance)).toFixed(2);
+            const tax = parseFloat(r.tax_deduction).toFixed(2);
+            const line = [
+                i + 1,
+                r.id_number || '',
+                r.branch_code || '00000',
+                r.title || 'นาย',
+                r.first_name,
+                r.middle_name || '',
+                r.last_name,
+                r.address_building || '',
+                r.address_room || '',
+                r.address_floor || '',
+                r.address_village || '',
+                r.address_no || '',
+                r.address_moo || '',
+                r.address_soi || '',
+                r.address_yaek || '',
+                r.address_road || '',
+                r.address_subdistrict || '',
+                r.address_district || '',
+                r.address_province || '',
+                r.address_zipcode || '',
+                paymentDateStr,
+                r.pnd3_income_type || '40(2)',
+                r.pnd3_tax_rate || '3.00',
+                income,
+                tax,
+                '1'
+            ].join('|');
+            csvContent += line + "\r\n";
+        });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=PND3_${month}_${year}.csv`);
+        res.send(csvContent);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/api/reports/pnd53-csv', async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        if (!month || !year) return res.status(400).json({ error: 'กรุณาระบุเดือนและปี' });
+
+        const [rows] = await pool.query(`
+            SELECT pr.*, e.*, d.name as department
+            FROM payroll_records pr
+            JOIN employees e ON pr.employee_id = e.id
+            LEFT JOIN departments d ON e.department_id = d.id
+            WHERE pr.period_month = ? AND pr.period_year = ? AND pr.status = 'paid' AND e.tax_form = 'pnd53'
+            ORDER BY e.employee_code ASC
+        `, [month, year]);
+
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'ไม่พบข้อมูล พ.ง.ด. 53 ที่อนุมัติแล้วในเดือนนี้' });
+        }
+
+        const [settings] = await pool.query('SELECT * FROM system_settings LIMIT 1');
+        const cutoffDay = settings[0]?.payroll_cutoff_date || 25;
+        const thaiYear = parseInt(year) + 543;
+        const paymentDateStr = `${String(cutoffDay).padStart(2, '0')}/${String(month).padStart(2, '0')}/${thaiYear}`;
+
+        let csvContent = "";
+        rows.forEach((r, i) => {
+            const income = (parseFloat(r.base_salary) + parseFloat(r.overtime_pay) + parseFloat(r.bonus) + parseFloat(r.diligence_allowance)).toFixed(2);
+            const tax = parseFloat(r.tax_deduction).toFixed(2);
+            const line = [
+                i + 1,
+                r.id_number || '',
+                r.branch_code || '00000',
+                r.title || '',
+                r.first_name,
+                r.address_building || '',
+                r.address_room || '',
+                r.address_floor || '',
+                r.address_village || '',
+                r.address_no || '',
+                r.address_moo || '',
+                r.address_soi || '',
+                r.address_yaek || '',
+                r.address_road || '',
+                r.address_subdistrict || '',
+                r.address_district || '',
+                r.address_province || '',
+                r.address_zipcode || '',
+                paymentDateStr,
+                r.pnd3_income_type || 'ค่าบริการ',
+                r.pnd3_tax_rate || '3.00',
+                income,
+                tax,
+                '1'
+            ].join('|');
+            csvContent += line + "\r\n";
+        });
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename=PND53_${month}_${year}.csv`);
+        res.send(csvContent);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // 2. สปส. 1-10 (Social Security Report)

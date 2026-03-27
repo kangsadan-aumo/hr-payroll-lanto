@@ -27,6 +27,10 @@ const API = 'http://localhost:5000/api';
 interface Employee {
     id: string;
     employee_code: string;
+    title: string;
+    first_name: string;
+    middle_name: string;
+    last_name: string;
     name: string;
     department: string;
     position: string;
@@ -38,6 +42,23 @@ interface Employee {
     id_number?: string;
     shift_id?: number;
     shift_name?: string;
+    tax_form?: string;
+    branch_code?: string;
+    address_building?: string;
+    address_room?: string;
+    address_floor?: string;
+    address_village?: string;
+    address_no?: string;
+    address_moo?: string;
+    address_soi?: string;
+    address_yaek?: string;
+    address_road?: string;
+    address_subdistrict?: string;
+    address_district?: string;
+    address_province?: string;
+    address_zipcode?: string;
+    pnd3_income_type?: string;
+    pnd3_tax_rate?: number;
 }
 
 interface CsvRow {
@@ -60,7 +81,9 @@ interface CsvRow {
 // ── Map CSV header → internal field ──
 const CSV_HEADER_MAP: Record<string, string> = {
     'รหัสพนักงาน': 'employee_code',
+    'คำนำหน้า': 'title',
     'ชื่อ': 'first_name',
+    'ชื่อกลาง': 'middle_name',
     'นามสกุล': 'last_name',
     'แผนก': 'department',
     'สาขา': 'department',       // alias
@@ -314,10 +337,12 @@ export const Employees: React.FC = () => {
     const closeDrawer = () => { setDrawerVisible(false); form.resetFields(); };
 
     const handleSave = async (values: any) => {
-        const nameParts = values.name.split(' ');
         const payload = {
-            first_name: nameParts[0],
-            last_name: nameParts.slice(1).join(' ') || '',
+            employee_code: values.employee_code,
+            title: values.title,
+            first_name: values.first_name,
+            middle_name: values.middle_name,
+            last_name: values.last_name,
             department_id: values.department_id,
             shift_id: values.shift_id || null,
             position: values.position,
@@ -338,8 +363,8 @@ export const Employees: React.FC = () => {
             }
             closeDrawer();
             fetchData();
-        } catch {
-            message.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+        } catch (error: any) {
+            message.error(error.response?.data?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
         }
     };
 
@@ -714,75 +739,246 @@ export const Employees: React.FC = () => {
                     </Space>
                 }
             >
-                <Form form={form} layout="vertical" onFinish={handleSave} initialValues={{ status: 'active' }}>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="name" label="ชื่อ-นามสกุล" rules={[{ required: true, message: 'กรุณากรอกชื่อ' }]}>
-                                <Input placeholder="เช่น สมชาย ใจกล้า" />
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="joinDate" label="วันที่เริ่มปฏิบัติงาน" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
-                                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="department_id" label="แผนก" rules={[{ required: true, message: 'กรุณาเลือกแผนก' }]}>
-                                <Select placeholder="เลือกแผนก">
-                                    {departmentsList.map(d => <Option key={d.id} value={d.id}>{d.name}</Option>)}
-                                </Select>
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="position" label="ตำแหน่ง" rules={[{ required: true, message: 'กรุณากรอกตำแหน่ง' }]}>
-                                <Input placeholder="เช่น HR Admin" />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="phone" label="เบอร์โทรศัพท์">
-                                <Input placeholder="08x-xxx-xxxx" />
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="email" label="อีเมล">
-                                <Input placeholder="email@company.com" />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="base_salary" label="เงินเดือนพื้นฐาน (บาท)">
-                                <Input type="number" placeholder="เช่น 25000" prefix="฿" />
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="id_number" label="เลขประจำตัวประชาชน (13 หลัก)" rules={[{ len: 13, message: 'เลขบัตรประชาชนต้องมี 13 หลัก' }]}>
-                                <Input placeholder="1xxxxxxxxxxxx" maxLength={13} />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="shift_id" label="กะการทำงาน (Shift)">
-                                <Select placeholder="เลือกกะการทำงาน">
-                                    <Option value={null}>-- ไม่กำหนด --</Option>
-                                    {shiftsList.map(s => <Option key={s.id} value={s.id}>{s.shiftName} ({s.startTime}-{s.endTime})</Option>)}
-                                </Select>
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
+                <Form form={form} layout="vertical" onFinish={handleSave} initialValues={{ status: 'active', title: 'นาย', tax_form: 'pnd1', branch_code: '00000', pnd3_income_type: '40(2)', pnd3_tax_rate: 3.00 }}>
+                    <Tabs defaultActiveKey="basic">
+                        <TabPane tab="ข้อมูลทั่วไป" key="basic">
+                            <Row gutter={16}>
+                                <Col span={6}>
+                                    <Form.Item name="title" label="คำนำหน้า" rules={[{ required: true }]}>
+                                        <Select>
+                                            <Option value="นาย">นาย</Option>
+                                            <Option value="นาง">นาง</Option>
+                                            <Option value="นางสาว">นางสาว</Option>
+                                            <Option value="อื่น ๆ">อื่น ๆ</Option>
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                                <Col span={18}>
+                                    <Form.Item name="first_name" label="ชื่อ" rules={[{ required: true, message: 'กรุณากรอกชื่อ' }]}>
+                                        <Input placeholder="เช่น สมชาย" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="middle_name" label="ชื่อกลาง">
+                                        <Input placeholder="(ถ้ามี)" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="last_name" label="นามสกุล" rules={[{ required: true, message: 'กรุณากรอกนามสกุล' }]}>
+                                        <Input placeholder="เช่น ใจกล้า" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item 
+                                        name="employee_code" 
+                                        label="รหัสพนักงาน (5 หลัก)" 
+                                        rules={[
+                                            { required: true, message: 'กรุณากรอกรหัสพนักงาน' },
+                                            { len: 5, message: 'รหัสพนักงานต้องมี 5 หลัก' }
+                                        ]}
+                                    >
+                                        <Input placeholder="เช่น 00001" maxLength={5} />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="joinDate" label="วันที่เริ่มปฏิบัติงาน" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
+                                        <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="department_id" label="แผนก" rules={[{ required: true, message: 'กรุณาเลือกแผนก' }]}>
+                                        <Select placeholder="เลือกแผนก">
+                                            {departmentsList.map(d => <Option key={d.id} value={d.id}>{d.name}</Option>)}
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="position" label="ตำแหน่ง" rules={[{ required: true, message: 'กรุณากรอกตำแหน่ง' }]}>
+                                        <Input placeholder="เช่น HR Admin" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="phone" label="เบอร์โทรศัพท์">
+                                        <Input placeholder="08x-xxx-xxxx" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="email" label="อีเมล">
+                                        <Input placeholder="email@company.com" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="base_salary" label="เงินเดือนพื้นฐาน (บาท)">
+                                        <Input type="number" placeholder="เช่น 25000" prefix="฿" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="id_number" label="เลขประจำตัวประชาชน (13 หลัก)" rules={[{ len: 13, message: 'เลขบัตรประชาชนต้องมี 13 หลัก' }]}>
+                                        <Input placeholder="1xxxxxxxxxxxx" maxLength={13} />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="shift_id" label="กะการทำงาน (Shift)">
+                                        <Select placeholder="เลือกกะการทำงาน">
+                                            <Option value={null}>-- ไม่กำหนด --</Option>
+                                            {shiftsList.map(s => <Option key={s.id} value={s.id}>{s.shiftName} ({s.startTime}-{s.endTime})</Option>)}
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
+                                        <Select>
+                                            <Option value="active">ทำงานอยู่ (Active)</Option>
+                                            <Option value="inactive">ลาออก (Inactive)</Option>
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                        </TabPane>
+                        <TabPane tab="ที่อยู่ (Address)" key="address">
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="address_building" label="อาคาร/ตึก">
+                                        <Input placeholder="เช่น อาคารไทย" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={6}>
+                                    <Form.Item name="address_room" label="ห้อง">
+                                        <Input placeholder="เช่น 401" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={6}>
+                                    <Form.Item name="address_floor" label="ชั้น">
+                                        <Input placeholder="เช่น 4" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={14}>
+                                    <Form.Item name="address_village" label="หมู่บ้าน">
+                                        <Input placeholder="เช่น รัตนาธิเบศร์" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={10}>
+                                    <Form.Item name="address_no" label="เลขที่บ้าน">
+                                        <Input placeholder="เช่น 99/99" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={6}>
+                                    <Form.Item name="address_moo" label="หมู่ที่">
+                                        <Input placeholder="เช่น 1" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={18}>
+                                    <Form.Item name="address_soi" label="ตรอก/ซอย">
+                                        <Input placeholder="เช่น รามอินทรา 14" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="address_yaek" label="แยก">
+                                        <Input placeholder="เช่น - " />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="address_road" label="ถนน">
+                                        <Input placeholder="เช่น สุขุมวิท" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="address_subdistrict" label="ตำบล/แขวง">
+                                        <Input placeholder="เช่น ทุ่งครุ" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="address_district" label="อำเภอ/เขต">
+                                        <Input placeholder="เช่น ทุ่งครุ" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="address_province" label="จังหวัด">
+                                        <Input placeholder="เช่น กรุงเทพฯ" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="address_zipcode" label="รหัสไปรษณีย์">
+                                        <Input placeholder="10140" maxLength={5} />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
+                        </TabPane>
+                        <TabPane tab="ข้อมูลภาษี (Tax)" key="tax">
+                            <Form.Item name="tax_form" label="ประเภทรายงานภาษี" rules={[{ required: true }]}>
                                 <Select>
-                                    <Option value="active">ทำงานอยู่ (Active)</Option>
-                                    <Option value="inactive">ลาออก (Inactive)</Option>
+                                    <Option value="pnd1">พ.ง.ด. 1 (เงินเดือนพนักงานปกติ)</Option>
+                                    <Option value="pnd3">พ.ง.ด. 3 (จ้างบริการ/บุคคลภายนอก)</Option>
+                                    <Option value="pnd53">พ.ง.ด. 53 (นิติบุคคลข/บริษัท)</Option>
                                 </Select>
                             </Form.Item>
-                        </Col>
-                    </Row>
+                            <Form.Item name="branch_code" label="เลขที่สาขา (Branch Code)">
+                                <Input placeholder="เช่น 00000" maxLength={5} />
+                            </Form.Item>
+                            
+                            {/* Option for PND3/PND53 specifically */}
+                            <Form.Item shouldUpdate={(prev, curr) => prev.tax_form !== curr.tax_form}>
+                                {({ getFieldValue }) => (getFieldValue('tax_form') === 'pnd3' || getFieldValue('tax_form') === 'pnd53') ? (
+                                    <Alert
+                                        message={`การตั้งค่าสำหรับ ${getFieldValue('tax_form').toUpperCase()}`}
+                                        description={
+                                            <Row gutter={16} style={{ marginTop: 12 }}>
+                                                <Col span={12}>
+                                                    <Form.Item name="pnd3_income_type" label="ประเภทเงินได้">
+                                                        <Select>
+                                                            <Option value="40(2)">40(2) จ้างงาน/บริการ</Option>
+                                                            <Option value="40(3)">40(3) ค่าลิขสิทธิ์</Option>
+                                                            <Option value="40(8)">40(8) อื่นๆ</Option>
+                                                            <Option value="ค่าบริการ">ค่าบริการ</Option>
+                                                            <Option value="ค่าเช่า">ค่าเช่า</Option>
+                                                            <Option value="ค่าวิชาชีพอิสระ">ค่าวิชาชีพอิสระ</Option>
+                                                            <Option value="ค่าโฆษณา">ค่าโฆษณา (2%)</Option>
+                                                            <Option value="ค่าขนส่ง">ค่าขนส่ง (1%)</Option>
+                                                        </Select>
+                                                    </Form.Item>
+                                                </Col>
+                                                <Col span={12}>
+                                                    <Form.Item name="pnd3_tax_rate" label="อัตราภาษี (%)">
+                                                        <Select>
+                                                            <Option value={1.00}>1%</Option>
+                                                            <Option value={2.00}>2%</Option>
+                                                            <Option value={3.00}>3%</Option>
+                                                            <Option value={5.00}>5%</Option>
+                                                            <Option value={0.00}>ไม่หัก</Option>
+                                                        </Select>
+                                                    </Form.Item>
+                                                </Col>
+                                            </Row>
+                                        }
+                                        type="info"
+                                        showIcon
+                                    />
+                                ) : null}
+                            </Form.Item>
+                        </TabPane>
+                    </Tabs>
                 </Form>
             </Drawer>
 

@@ -16,6 +16,7 @@ import {
     AuditOutlined,
     BarChartOutlined,
     FileProtectOutlined,
+    ClockCircleOutlined, // Added ClockCircleOutlined
 } from '@ant-design/icons';
 import './MainLayout.css';
 
@@ -40,6 +41,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
         { key: 'claims', icon: <AuditOutlined />, label: 'สวัสดิการและเบิกจ่าย' },
         { key: 'payroll', icon: <DollarOutlined />, label: 'จัดการเงินเดือน' },
         { key: 'payroll-history', icon: <HistoryOutlined />, label: 'ประวัติเงินเดือน' },
+        { key: 'overtime', icon: <ClockCircleOutlined />, label: 'จัดการค่าล่วงเวลา (OT)' },
         { key: 'analytics', icon: <BarChartOutlined />, label: 'รายงานและวิเคราะห์' },
         { key: 'audit-logs', icon: <HistoryOutlined style={{ color: '#ff7a45' }} />, label: 'ประวัติการใช้งาน (Logs)' },
         { key: 'gov-reports', icon: <FileProtectOutlined />, label: 'รายงานรัฐบาล (Compliance)' },
