@@ -3,6 +3,7 @@ import { Table, Button, Modal, Form, Input, InputNumber, DatePicker, Select, Tag
 import { PlusOutlined, CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import { API_BASE_URL as API } from './api';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -29,7 +30,7 @@ export const Claims: React.FC = () => {
     const fetchClaims = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/claims');
+            const res = await axios.get(`${API}/claims`);
             setClaims(res.data);
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลเบิกจ่ายได้');
@@ -40,7 +41,7 @@ export const Claims: React.FC = () => {
 
     const fetchEmployees = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/employees');
+            const res = await axios.get(`${API}/employees`);
             setEmployees(res.data.map((e: any) => ({ id: e.id, name: e.name })));
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลพนักงานได้');
@@ -54,7 +55,7 @@ export const Claims: React.FC = () => {
 
     const handleAddClaim = async (values: any) => {
         try {
-            await axios.post('http://localhost:5000/api/claims', {
+            await axios.post(`${API}/claims`, {
                 ...values,
                 receipt_date: values.receipt_date.format('YYYY-MM-DD')
             });
@@ -69,7 +70,7 @@ export const Claims: React.FC = () => {
 
     const updateStatus = async (id: number, status: string) => {
         try {
-            await axios.put(`http://localhost:5000/api/claims/${id}/status`, { status });
+            await axios.put(`${API}/claims/${id}/status`, { status });
             message.success(`อัปเดตสถานะเป็น ${status} สำเร็จ`);
             fetchClaims();
         } catch (err) {
@@ -79,7 +80,7 @@ export const Claims: React.FC = () => {
 
     const deleteClaim = async (id: number) => {
         try {
-            await axios.delete(`http://localhost:5000/api/claims/${id}`);
+            await axios.delete(`${API}/claims/${id}`);
             message.success('ลบข้อมูลสำเร็จ');
             fetchClaims();
         } catch (err) {

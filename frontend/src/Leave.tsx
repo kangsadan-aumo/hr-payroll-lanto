@@ -24,6 +24,8 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
+import { API_BASE_URL as API } from './api';
+
 interface LeaveRequest {
     id: string;
     employee_name: string;
@@ -57,9 +59,9 @@ export const Leave: React.FC = () => {
         setLoading(true);
         try {
             const [leavesRes, typesRes, empRes] = await Promise.all([
-                axios.get('http://localhost:5000/api/leaves/requests'),
-                axios.get('http://localhost:5000/api/leave-types'),
-                axios.get('http://localhost:5000/api/employees')
+                axios.get(`${API}/leaves/requests`),
+                axios.get(`${API}/leave-types`),
+                axios.get(`${API}/employees`)
             ]);
             setLeaveRequests(leavesRes.data);
             setLeaveTypes(typesRes.data);
@@ -268,7 +270,7 @@ export const Leave: React.FC = () => {
 
                 if (records.length === 0) throw new Error('ไม่พบข้อมูลที่สมบูรณ์ในไฟล์');
 
-                const res = await axios.post('http://localhost:5000/api/leaves/import', { records });
+                const res = await axios.post(`${API}/leaves/import`, { records });
 
                 message.success(res.data.message);
                 setIsUploadModalVisible(false);

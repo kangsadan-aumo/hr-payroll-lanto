@@ -19,10 +19,9 @@ import dayjs from 'dayjs';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
+import { API_BASE_URL as API } from './api';
 
 const { Dragger } = Upload;
-
-const API = 'http://localhost:5000/api';
 
 interface Employee {
     id: string;

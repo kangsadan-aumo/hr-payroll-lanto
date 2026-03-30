@@ -33,7 +33,7 @@ interface PayrollRecord {
     isPreview?: boolean;
 }
 
-const API = 'http://localhost:5000/api';
+import { API_BASE_URL as API } from './api';
 
 export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } | null }> = ({ initialMonth }) => {
     const [payrollData, setPayrollData] = useState<PayrollRecord[]>([]);

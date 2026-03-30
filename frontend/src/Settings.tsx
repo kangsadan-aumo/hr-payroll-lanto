@@ -35,7 +35,7 @@ export const Settings: React.FC = () => {
     const [editingLeaveRuleId, setEditingLeaveRuleId] = useState<string | null>(null);
     const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
 
-    const API_BASE = 'http://localhost:5000/api';
+    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
     // --- Data Fetching ---
     const fetchAllData = async () => {

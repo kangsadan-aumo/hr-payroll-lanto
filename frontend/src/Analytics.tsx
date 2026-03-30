@@ -17,7 +17,8 @@ export const Analytics: React.FC = () => {
     const fetchCostSummary = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/analytics/cost-summary');
+            const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const res = await axios.get(`${API}/analytics/cost-summary`);
             setCostData(res.data);
         } catch (err) {
             message.error('ไม่สามารถดึงข้อมูลสรุปต้นทุนได้');
