@@ -2362,9 +2362,22 @@ async function runMigrations() {
             base_salary DECIMAL(10, 2) DEFAULT 0.00,
             status ENUM('active', 'inactive') DEFAULT 'active',
             join_date DATE,
-            id_number VARCHAR(20) DEFAULT NULL,
-            phone VARCHAR(20) DEFAULT NULL,
             email VARCHAR(150) DEFAULT NULL,
+            id_number VARCHAR(20) DEFAULT NULL,
+            bank_name VARCHAR(100),
+            bank_account_number VARCHAR(20),
+            spouse_allowance TINYINT(1) DEFAULT 0,
+            children_count INT DEFAULT 0,
+            parents_care_count INT DEFAULT 0,
+            health_insurance DECIMAL(10,2) DEFAULT 0.00,
+            life_insurance DECIMAL(10,2) DEFAULT 0.00,
+            pvf_rate DECIMAL(5,2) DEFAULT 0.00,
+            pvf_employer_rate DECIMAL(5,2) DEFAULT 0.00,
+            pnd3_income_type VARCHAR(50) DEFAULT '40(2)',
+            pnd3_tax_rate DECIMAL(5,2) DEFAULT 3.00,
+            probation_end_date DATE,
+            contract_end_date DATE,
+            notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
@@ -2395,6 +2408,7 @@ async function runMigrations() {
             end_date DATE NOT NULL,
             reason TEXT,
             status VARCHAR(20) DEFAULT 'pending',
+            total_days DECIMAL(5,2) DEFAULT 1.00,
             approved_at TIMESTAMP NULL,
             approved_by INT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2530,7 +2544,15 @@ async function runMigrations() {
     await ensureColumnExists('employees', 'pnd3_tax_rate', "DECIMAL(5,2) DEFAULT 3.00");
     await ensureColumnExists('employees', 'bank_name', "VARCHAR(100) DEFAULT NULL");
     await ensureColumnExists('employees', 'bank_account_number', "VARCHAR(20) DEFAULT NULL");
+    await ensureColumnExists('employees', 'spouse_allowance', "TINYINT(1) DEFAULT 0");
+    await ensureColumnExists('employees', 'children_count', "INT DEFAULT 0");
+    await ensureColumnExists('employees', 'parents_care_count', "INT DEFAULT 0");
+    await ensureColumnExists('employees', 'health_insurance', "DECIMAL(10,2) DEFAULT 0.00");
+    await ensureColumnExists('employees', 'life_insurance', "DECIMAL(10,2) DEFAULT 0.00");
+    await ensureColumnExists('employees', 'pvf_rate', "DECIMAL(5,2) DEFAULT 0.00");
+    await ensureColumnExists('employees', 'pvf_employer_rate', "DECIMAL(5,2) DEFAULT 0.00");
     await ensureColumnExists('system_settings', 'branch_code', "VARCHAR(10) DEFAULT '00000'");
+    await ensureColumnExists('leave_requests', 'total_days', 'DECIMAL(5,2) DEFAULT 1.00');
     await ensureColumnExists('leave_requests', 'approved_at', 'TIMESTAMP NULL');
     await ensureColumnExists('leave_requests', 'approved_by', 'INT');
     await ensureColumnExists('overtime_requests', 'approved_at', 'TIMESTAMP NULL');
