@@ -2395,9 +2395,44 @@ async function runMigrations() {
             end_date DATE NOT NULL,
             reason TEXT,
             status VARCHAR(20) DEFAULT 'pending',
+            approved_at TIMESTAMP NULL,
+            approved_by INT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
             FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS overtime_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            date DATE NOT NULL,
+            hours DECIMAL(5, 2) NOT NULL,
+            multiplier DECIMAL(3, 1) DEFAULT 1.5,
+            reason TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            approved_at TIMESTAMP NULL,
+            approved_by INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS disciplinary_records (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            type VARCHAR(100) NOT NULL,
+            description TEXT,
+            issued_at DATE NOT NULL,
+            created_by INT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS shift_schedules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            shift_id INT NOT NULL,
+            date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
+            UNIQUE(employee_id, date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `CREATE TABLE IF NOT EXISTS payroll_records (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2496,6 +2531,10 @@ async function runMigrations() {
     await ensureColumnExists('employees', 'bank_name', "VARCHAR(100) DEFAULT NULL");
     await ensureColumnExists('employees', 'bank_account_number', "VARCHAR(20) DEFAULT NULL");
     await ensureColumnExists('system_settings', 'branch_code', "VARCHAR(10) DEFAULT '00000'");
+    await ensureColumnExists('leave_requests', 'approved_at', 'TIMESTAMP NULL');
+    await ensureColumnExists('leave_requests', 'approved_by', 'INT');
+    await ensureColumnExists('overtime_requests', 'approved_at', 'TIMESTAMP NULL');
+    await ensureColumnExists('overtime_requests', 'approved_by', 'INT');
 
     // Seed Initial Data
     try {
