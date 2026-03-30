@@ -13,7 +13,14 @@ import { Resend } from 'resend';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -48,6 +55,18 @@ const pool = mysql.createPool({
     queueLimit: 0,
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : null
 });
+
+const ensureColumnExists = async (tableName, columnName, columnDefinition) => {
+    try {
+        const [rows] = await pool.query(`SHOW COLUMNS FROM ${tableName} LIKE ?`, [columnName]);
+        if (rows.length === 0) {
+            await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+            console.log(`✅ [Migration] Added col ${columnName} to ${tableName}`);
+        }
+    } catch (err) {
+        console.warn(`⚠️ [Migration] Error with col ${columnName} in ${tableName}:`, err.message);
+    }
+};
 
 // ─────────────────────────────────────────────
 // 📧 RESEND SETUP
@@ -306,6 +325,17 @@ app.get('/api/departments', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM departments ORDER BY id ASC');
         res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/departments', async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name is required' });
+        const [result] = await pool.query('INSERT INTO departments (name) VALUES (?)', [name]);
+        res.status(201).json({ id: result.insertId, name, message: 'Department created' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1492,7 +1522,7 @@ app.get('/api/attendance', async (req, res) => {
 
                     if (bestShift && minDiff <= 300) { // ต้องไม่ห่างเกิน 5 ชั่วโมง
                         actualShiftStart = bestShift.start_time;
-                        actualAllowance = parseInt(bestShift.late_allowance_minutes || 0);
+                                                actualAllowance = parseInt(bestShift.late_allowance_minutes || 0);
                         r.detected_shift_name = bestShift.name; // แนบชื่อกะกลับไปให้ UI
                     }
                 }
@@ -1599,7 +1629,8 @@ app.post('/api/attendance/import', async (req, res) => {
                 if (shiftRows.length > 0 && shiftRows[0].start_time && checkInDatetime) {
                     const shiftStart = shiftRows[0].start_time; // "HH:MM:SS"
                     const allowance = parseInt(shiftRows[0].late_allowance_minutes || 0);
-                    const checkInTime = checkInDatetime.substring(11, 19) || checkInDatetime.substring(11);
+                    const checkInTime = checkInDatetime.substring(11, 19)
+| checkInDatetime.substring(11);
 
                     if (checkInTime) {
                         const [sh, sm] = shiftStart.split(':').map(Number);
@@ -1915,6 +1946,25 @@ async function runMigrations() {
         console.warn('Could not initialize system_settings:', err.message);
     }
 }
+
+// ─────────────────────────────────────────────
+// 🩺 HEALTH & DEBUG (For Production Support)
+// ─────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
+
+app.get('/api/debug/db', async (req, res) => {
+    try {
+        const [tables] = await pool.query('SHOW TABLES');
+        const dbStatus = {
+            database: process.env.DB_NAME,
+            tables: tables.map(t => Object.values(t)[0]),
+            connection: 'healthy'
+        };
+        res.json(dbStatus);
+    } catch (err) {
+        res.status(500).json({ error: 'DB Connection Failed', details: err.message });
+    }
+});
 
 // ─────────────────────────────────────────────
 // PUBLIC HOLIDAYS (วันหยุดนักขัตฤกษ์)
@@ -2502,6 +2552,195 @@ app.get('/api/admin/audit-logs', async (req, res) => {
         const [rows] = await pool.query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100');
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+async function runMigrations() {
+    console.log('🏗️ Starting safe migrations...');
+    const baseTables = [
+        `CREATE TABLE IF NOT EXISTS departments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS shifts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            start_time TIME,
+            end_time TIME,
+            late_allowance_minutes INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS employees (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_code VARCHAR(50) UNIQUE NOT NULL,
+            title VARCHAR(20) DEFAULT 'นาย',
+            first_name VARCHAR(100) NOT NULL,
+            middle_name VARCHAR(100) DEFAULT NULL,
+            last_name VARCHAR(100) NOT NULL,
+            department_id INT,
+            shift_id INT,
+            position VARCHAR(100),
+            base_salary DECIMAL(10, 2) DEFAULT 0.00,
+            status ENUM('active', 'inactive') DEFAULT 'active',
+            join_date DATE,
+            id_number VARCHAR(20) DEFAULT NULL,
+            phone VARCHAR(20) DEFAULT NULL,
+            email VARCHAR(150) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+            FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS attendance_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            check_in_time DATETIME,
+            check_out_time DATETIME,
+            status VARCHAR(20),
+            late_minutes INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS leave_types (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            is_unpaid TINYINT(1) DEFAULT 0,
+            days_per_year INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS leave_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            leave_type_id INT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            reason TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS payroll_records (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            period_month INT NOT NULL,
+            period_year INT NOT NULL,
+            base_salary DECIMAL(10, 2) DEFAULT 0.00,
+            overtime_pay DECIMAL(10, 2) DEFAULT 0.00,
+            bonus DECIMAL(10, 2) DEFAULT 0.00,
+            late_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            leave_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            tax_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            sso_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            net_salary DECIMAL(10, 2) DEFAULT 0.00,
+            status VARCHAR(20) DEFAULT 'draft',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            UNIQUE(employee_id, period_month, period_year)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS system_settings (
+            id INT PRIMARY KEY,
+            company_name VARCHAR(200),
+            tax_id VARCHAR(20),
+            address TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS leave_quota_rules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            tenure_years INT NOT NULL,
+            vacation_days INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS public_holidays (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            holiday_date DATE NOT NULL UNIQUE,
+            name VARCHAR(150) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS audit_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT DEFAULT 1,
+            action VARCHAR(50) NOT NULL,
+            target_table VARCHAR(50),
+            target_id INT,
+            details JSON,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS claims (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            claim_type VARCHAR(100) NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            receipt_date DATE NOT NULL,
+            description TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            payroll_id INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS employee_documents (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            document_name VARCHAR(255) NOT NULL,
+            file_path VARCHAR(255) NOT NULL,
+            category VARCHAR(100),
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+    ];
+
+    for (const sql of baseTables) {
+        try {
+            await pool.query(sql);
+        } catch (err) {
+            console.error('❌ Base Migration Error:', err.message);
+        }
+    }
+
+    // SAFE COLUMN ADDITIONS (TiDB Cloud Compatible)
+    await ensureColumnExists('system_settings', 'diligence_allowance', 'DECIMAL(10,2) DEFAULT 0.00');
+    await ensureColumnExists('payroll_records', 'diligence_allowance', 'DECIMAL(10,2) DEFAULT 0.00');
+    await ensureColumnExists('payroll_records', 'claims_total', 'DECIMAL(10,2) DEFAULT 0.00');
+    await ensureColumnExists('employees', 'probation_end_date', 'DATE DEFAULT NULL');
+    await ensureColumnExists('employees', 'contract_end_date', 'DATE DEFAULT NULL');
+    await ensureColumnExists('employees', 'notes', 'TEXT DEFAULT NULL');
+    await ensureColumnExists('employees', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    await ensureColumnExists('employees', 'id_number', 'VARCHAR(20) DEFAULT NULL');
+    await ensureColumnExists('employees', 'phone', 'VARCHAR(20) DEFAULT NULL');
+    await ensureColumnExists('employees', 'email', 'VARCHAR(150) DEFAULT NULL');
+    await ensureColumnExists('employees', 'title', "VARCHAR(20) DEFAULT 'นาย'");
+    await ensureColumnExists('employees', 'middle_name', "VARCHAR(100) DEFAULT NULL");
+    await ensureColumnExists('employees', 'position', "VARCHAR(100) DEFAULT NULL");
+    await ensureColumnExists('employees', 'pnd3_income_type', "VARCHAR(50) DEFAULT '40(2)'");
+    await ensureColumnExists('employees', 'pnd3_tax_rate', "DECIMAL(5,2) DEFAULT 3.00");
+    await ensureColumnExists('employees', 'bank_name', "VARCHAR(100) DEFAULT NULL");
+    await ensureColumnExists('employees', 'bank_account_number', "VARCHAR(20) DEFAULT NULL");
+    await ensureColumnExists('system_settings', 'branch_code', "VARCHAR(10) DEFAULT '00000'");
+
+    // Seed Initial Data
+    try {
+        const [rows] = await pool.query('SELECT id FROM system_settings LIMIT 1');
+        if (rows.length === 0) {
+            await pool.query('INSERT INTO system_settings (id, company_name) VALUES (1, "My Company")');
+            console.log('🌱 Seeded default system_settings');
+        }
+    } catch (err) {
+        console.warn('⚠️ Seeding error:', err.message);
+    }
+    console.log('✅ All migrations finished.');
+}
+
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error(`💥 GLOBAL ERROR [${req.method} ${req.path}]:`, err.stack);
+    if (!res.headersSent) {
+        res.status(500).json({ 
+            error: 'Server Error', 
+            msg: err.message,
+            path: req.path
+        });
+    }
 });
 
 runMigrations()
