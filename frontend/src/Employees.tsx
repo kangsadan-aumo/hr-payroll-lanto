@@ -59,6 +59,8 @@ interface Employee {
     address_zipcode?: string;
     pnd3_income_type?: string;
     pnd3_tax_rate?: number;
+    bank_name?: string;
+    bank_account_number?: string;
 }
 
 interface CsvRow {
@@ -74,6 +76,8 @@ interface CsvRow {
     status: string;
     base_salary: string;
     id_number: string;
+    bank_name?: string;
+    bank_account_number?: string;
     _valid: boolean;
     _error?: string;
 }
@@ -107,11 +111,13 @@ const CSV_HEADER_MAP: Record<string, string> = {
     'base_salary': 'base_salary',
     'เลขบัตรประชาชน': 'id_number',
     'id_number': 'id_number',
+    'ธนาคาร': 'bank_name',
+    'เลขที่บัญชี': 'bank_account_number',
 };
 
-const TEMPLATE_CSV = `รหัสพนักงาน,ชื่อ,นามสกุล,แผนก,ตำแหน่ง,อีเมล,เบอร์โทรศัพท์,วันที่เริ่มงาน,สถานะ,เงินเดือนพื้นฐาน
-EMP001,สมชาย,ใจกล้า,HR,HR Manager,somchai@company.com,0812345678,2024-01-01,ใช้งาน,25000
-EMP002,สมหญิง,รักดี,IT Support,Developer,somying@company.com,0898765432,2024-03-15,ใช้งาน,30000`;
+const TEMPLATE_CSV = `รหัสพนักงาน,ชื่อ,นามสกุล,แผนก,ตำแหน่ง,อีเมล,เบอร์โทรศัพท์,วันที่เริ่มงาน,สถานะ,เงินเดือนพื้นฐาน,ธนาคาร,เลขที่บัญชี
+EMP001,สมชาย,ใจกล้า,HR,HR Manager,somchai@company.com,0812345678,2024-01-01,ใช้งาน,25000,กสิกรไทย,123-4-56789-0
+EMP002,สมหญิง,รักดี,IT Support,Developer,somying@company.com,0898765432,2024-03-15,ใช้งาน,30000,ไทยพาณิชย์,987-6-54321-0`;
 
 export const Employees: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -251,7 +257,9 @@ export const Employees: React.FC = () => {
             'วันที่เริ่มงาน': e.joinDate,
             'สถานะ': e.status === 'active' ? 'ใช้งาน' : 'ลาออก',
             'เงินเดือน': e.baseSalary,
-            'เลขบัตรประชาชน': e.id_number
+            'เลขบัตรประชาชน': e.id_number,
+            'ธนาคาร': e.bank_name,
+            'เลขที่บัญชี': e.bank_account_number
         }));
         const worksheet = XLSX.utils.json_to_sheet(exportData);
         const workbook = XLSX.utils.book_new();
@@ -280,6 +288,8 @@ export const Employees: React.FC = () => {
                 status: r.status || 'active',
                 base_salary: parseFloat(r.base_salary) || 0,
                 id_number: r.id_number || null,
+                bank_name: r.bank_name || null,
+                bank_account_number: r.bank_account_number || null,
             }));
             const res = await axios.post(`${API}/employees/import`, { employees: payload });
             message.success(`นำเข้าสำเร็จ: เพิ่มใหม่ ${res.data.created} คน, อัปเดต ${res.data.updated} คน`);
@@ -338,20 +348,13 @@ export const Employees: React.FC = () => {
 
     const handleSave = async (values: any) => {
         const payload = {
-            employee_code: values.employee_code,
-            title: values.title,
-            first_name: values.first_name,
-            middle_name: values.middle_name,
-            last_name: values.last_name,
-            department_id: values.department_id,
-            shift_id: values.shift_id || null,
-            position: values.position,
+            ...values,
             join_date: values.joinDate.format('YYYY-MM-DD'),
-            status: values.status,
-            phone: values.phone,
-            email: values.email,
-            base_salary: values.base_salary || 0,
+            shift_id: values.shift_id || null,
+            base_salary: values.baseSalary || 0,
             id_number: values.id_number || null,
+            bank_name: values.bank_name || null,
+            bank_account_number: values.bank_account_number || null,
         };
         try {
             if (editingEmployee) {
@@ -818,7 +821,7 @@ export const Employees: React.FC = () => {
                             </Row>
                             <Row gutter={16}>
                                 <Col span={12}>
-                                    <Form.Item name="base_salary" label="เงินเดือนพื้นฐาน (บาท)">
+                                    <Form.Item name="baseSalary" label="เงินเดือนพื้นฐาน (บาท)">
                                         <Input type="number" placeholder="เช่น 25000" prefix="฿" />
                                     </Form.Item>
                                 </Col>
@@ -977,6 +980,27 @@ export const Employees: React.FC = () => {
                                     />
                                 ) : null}
                             </Form.Item>
+                            
+                            <Divider orientation={"left" as any}>ข้อมูลธนาคาร</Divider>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="bank_name" label="ธนาคาร">
+                                        <Select placeholder="เลือกธนาคาร">
+                                            <Option value="กสิกรไทย">กสิกรไทย (K-Bank)</Option>
+                                            <Option value="ไทยพาณิชย์">ไทยพาณิชย์ (SCB)</Option>
+                                            <Option value="กรุงเทพ">กรุงเทพ (BBL)</Option>
+                                            <Option value="กรุงไทย">กรุงไทย (KTB)</Option>
+                                            <Option value="กรุงศรีอยุธยา">กรุงศรีอยุธยา (BAY)</Option>
+                                            <Option value="ทีทีบี">ทีทีบี (ttb)</Option>
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item name="bank_account_number" label="เลขที่บัญชี">
+                                        <Input placeholder="เช่น 123-4-56789-0" />
+                                    </Form.Item>
+                                </Col>
+                            </Row>
                         </TabPane>
                     </Tabs>
                 </Form>

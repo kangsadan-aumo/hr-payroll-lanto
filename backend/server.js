@@ -8,6 +8,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { Resend } from 'resend';
 
 dotenv.config();
 
@@ -48,11 +49,30 @@ const pool = mysql.createPool({
 });
 
 // ─────────────────────────────────────────────
+// 📧 RESEND SETUP
+// ─────────────────────────────────────────────
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY.includes('12345')) {
+    console.warn('⚠️ RESEND_API_KEY is not set correctly. Email notifications may not work.');
+} else {
+    console.log('📧 Resend integration initialized.');
+}
+
+// ─────────────────────────────────────────────
 // 💡 HELPER: คำนวณประกันสังคม
 // ─────────────────────────────────────────────
 function calculateSSO(baseSalary) {
-    // ประกันสังคม 5% ของเงินเดือน แต่ไม่เกิน 750 บาท/เดือน
-    return Math.min(Math.floor(baseSalary * 0.05), 750);
+    if (!baseSalary || baseSalary <= 0) return 0;
+    
+    // อัตราและเพดานปี 2569: ฐานเงินเดือนขั้นต่ำ 1,650 บาท และสูงสุด 17,500 บาท
+    const minBase = 1650;
+    const maxBase = 17500;
+    const rate = 0.05;
+
+    // คำนวณจากฐานที่ปรับแล้ว
+    const effectiveSalary = Math.max(minBase, Math.min(baseSalary, maxBase));
+    return Math.floor(effectiveSalary * rate);
 }
 
 // ─────────────────────────────────────────────
@@ -345,6 +365,8 @@ app.get('/api/employees', async (req, res) => {
             shift_start_time: r.shift_start_time,
             probation_end_date: r.probation_end_date,
             contract_end_date: r.contract_end_date,
+            bank_name: r.bank_name,
+            bank_account_number: r.bank_account_number,
             notes: r.notes
         }));
         res.json(formatted);
@@ -358,19 +380,19 @@ app.post('/api/employees', async (req, res) => {
         const { 
             employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
             tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
-            pnd3_income_type, pnd3_tax_rate
+            pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
         } = req.body;
         const code = employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
         const [result] = await pool.query(
             `INSERT INTO employees (
                 employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
                 tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
-                pnd3_income_type, pnd3_tax_rate
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 code, title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null,
                 tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
-                pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00
+                pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, bank_name || null, bank_account_number || null
             ]
         );
         res.status(201).json({ id: result.insertId, message: 'Employee created' });
@@ -385,18 +407,18 @@ app.put('/api/employees/:id', async (req, res) => {
         const { 
             title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
             tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
-            pnd3_income_type, pnd3_tax_rate
+            pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
         } = req.body;
         const [result] = await pool.query(
             `UPDATE employees SET 
                 title=?, first_name=?, middle_name=?, last_name=?, department_id=?, shift_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?,
                 tax_form=?, branch_code=?, address_building=?, address_room=?, address_floor=?, address_village=?, address_no=?, address_moo=?, address_soi=?, address_yaek=?, address_road=?, address_subdistrict=?, address_district=?, address_province=?, address_zipcode=?,
-                pnd3_income_type=?, pnd3_tax_rate=?, updated_at=CURRENT_TIMESTAMP 
+                pnd3_income_type=?, pnd3_tax_rate=?, bank_name=?, bank_account_number=?, updated_at=CURRENT_TIMESTAMP 
              WHERE id=?`,
             [
                 title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, status, base_salary, phone || null, email || null, id_number || null,
                 tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
-                pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, id
+                pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, bank_name || null, bank_account_number || null, id
             ]
         );
         if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
@@ -567,7 +589,7 @@ app.get('/api/leaves/requests', async (req, res) => {
             JOIN employees e ON lr.employee_id = e.id
             JOIN leave_types l ON lr.leave_type_id = l.id
             LEFT JOIN departments d ON e.department_id = d.id
-            ORDER BY lr.submitted_at DESC
+            ORDER BY lr.start_date DESC, lr.id DESC
         `);
         const formatted = rows.map(r => ({ ...r, id: r.id.toString(), total_days: parseFloat(r.total_days) }));
         res.json(formatted);
@@ -1204,7 +1226,52 @@ app.put('/api/payroll/approve', async (req, res) => {
             `UPDATE payroll_records SET status='paid' WHERE employee_id IN (${empIds.map(() => '?').join(',')}) AND period_month=? AND period_year=?`,
             [...empIds, m, y]
         );
-        res.json({ message: `อนุมัติจ่ายเงินเดือนสำเร็จ ${empIds.length} คน` });
+
+        // ── 📧 SEND EMAIL NOTIFICATIONS 📧 ──
+        // (Optional: In production, use a background worker/queue)
+        try {
+            const [records] = await pool.query(
+                `SELECT pr.*, e.first_name, e.last_name, e.email 
+                 FROM payroll_records pr 
+                 JOIN employees e ON pr.employee_id = e.id 
+                 WHERE pr.employee_id IN (${empIds.map(() => '?').join(',')}) AND pr.period_month=? AND pr.period_year=?`,
+                [...empIds, m, y]
+            );
+
+            for (const rec of records) {
+                if (rec.email) {
+                    try {
+                        const { data, error } = await resend.emails.send({
+                            from: process.env.RESEND_FROM || 'onboarding@resend.dev',
+                            to: rec.email,
+                            subject: `แจ้งจ่ายเงินเดือน ประจำเดือน ${m}/${y}`,
+                            html: `
+                                <div style="font-family: sans-serif; max-width: 600px; border: 1px solid #eee; padding: 20px;">
+                                    <h2 style="color: #1890ff;">แจ้งข่าวสารจาก HR</h2>
+                                    <p>สวัสดีคุณ <b>${rec.first_name} ${rec.last_name}</b>,</p>
+                                    <p>บริษัทได้ดำเนินการโอนเงินเดือนประจำงวด <b>${m}/${y}</b> เรียบร้อยแล้ว</p>
+                                    <p><b>ยอดสุทธิ: ${new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(rec.net_salary)}</b></p>
+                                    <p>คุณสามารถเข้าสู่ระบบเพื่อตรวจสอบสลิปเงินเดือนฉบับเต็มได้ทันที</p>
+                                    <hr style="border: none; border-top: 1px solid #eee;" />
+                                    <p style="font-size: 12px; color: #888;">นี่เป็นอีเมลอัตโนมัติ กรุณาอย่าตอบกลับ</p>
+                                </div>
+                            `
+                        });
+                        if (error) {
+                            console.error(`❌ Resend failed for ${rec.email}:`, error);
+                        } else {
+                            console.log(`✅ Email sent to ${rec.email}:`, data.id);
+                        }
+                    } catch (e) {
+                        console.error('Resend catch error:', e.message);
+                    }
+                }
+            }
+        } catch (mailErr) {
+            console.error('Mail trigger error:', mailErr.message);
+        }
+
+        res.json({ message: `อนุมัติจ่ายเงินเดือนสำเร็จ ${empIds.length} คน และกำลังส่งอีเมลแจ้งเตือน` });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1268,6 +1335,52 @@ app.put('/api/payroll/adjust', async (req, res) => {
     }
 });
 
+// ─────────────────────────────────────────────
+// 🏦 BANK PAYROLL EXPORT (Text/CSV for Bank Upload)
+// ─────────────────────────────────────────────
+app.get('/api/payroll/export-bank-text', async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        if (!month || !year) return res.status(400).json({ error: 'กรุณาระบุเดือนและปี' });
+
+        const [rows] = await pool.query(`
+            SELECT pr.*, e.first_name, e.last_name, e.bank_name, e.bank_account_number, e.employee_code, e.email
+            FROM payroll_records pr
+            JOIN employees e ON pr.employee_id = e.id
+            WHERE pr.period_month = ? AND pr.period_year = ? AND pr.status = 'paid'
+        `, [month, year]);
+
+        if (rows.length === 0) return res.status(404).json({ error: 'ไม่พบรายการที่อนุมัติจ่ายแล้วสำหรับงวดนี้' });
+
+        // Generate Bank Format (Example: KBS-Format-Like Text File)
+        let content = '';
+        let totalAmount = 0;
+
+        // Header Row (Simple Example)
+        content += `H,PAYROLL,${dayjs().format('YYYYMMDD')},${rows.length}\r\n`;
+
+        rows.forEach((r, i) => {
+            const amount = parseFloat(r.net_salary).toFixed(2);
+            totalAmount += parseFloat(r.net_salary);
+            // Format: Type, AccountNo, Amount, Name
+            const accNo = (r.bank_account_number || '').replace(/-/g, '').padEnd(10, ' ');
+            const name = `${r.first_name} ${r.last_name}`.substring(0, 40).padEnd(40, ' ');
+            const amtStr = amount.replace('.', '').padStart(12, '0'); // no dots, leading zeros
+            
+            content += `D,${accNo},${amtStr},${name},${r.employee_code}\r\n`;
+        });
+
+        // Trailer Row
+        const totalAmtStr = totalAmount.toFixed(2).replace('.', '').padStart(15, '0');
+        content += `T,${rows.length},${totalAmtStr}\r\n`;
+
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename=Bank_Payroll_${year}_${month}.txt`);
+        res.send(content);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // ─────────────────────────────────────────────
 // PAYROLL HISTORY (ประวัติรอบที่บันทึกแล้ว)
@@ -1684,6 +1797,8 @@ async function runMigrations() {
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS address_zipcode VARCHAR(10) DEFAULT NULL`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS pnd3_income_type VARCHAR(50) DEFAULT '40(2)'`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS pnd3_tax_rate DECIMAL(5,2) DEFAULT 3.00`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS bank_name VARCHAR(100) DEFAULT NULL`,
+        `ALTER TABLE employees ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR(20) DEFAULT NULL`,
         `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS branch_code VARCHAR(10) DEFAULT '00000'`,
     ];
     for (const sql of migrations) {

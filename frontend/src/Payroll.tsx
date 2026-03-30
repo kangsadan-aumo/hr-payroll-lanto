@@ -8,11 +8,13 @@ import type { TableProps } from 'antd';
 import {
     DollarOutlined, SearchOutlined, PrinterOutlined, CheckCircleOutlined,
     FileExcelOutlined, WalletOutlined, BankOutlined, CalculatorOutlined,
-    SyncOutlined, InfoCircleOutlined, EditOutlined
+    SyncOutlined, InfoCircleOutlined, EditOutlined, DownloadOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -218,6 +220,31 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         message.success('ดาวน์โหลด Excel สำเร็จ');
     };
 
+    const handleExportBank = () => {
+        window.open(`${API}/payroll/export-bank-text?month=${currentMonth}&year=${currentYear}`);
+        message.success('กำลังดาวน์โหลดไฟล์สำหรับธนาคาร');
+    };
+
+    const handleDownloadPDF = async () => {
+        if (!printRef.current) return;
+        setLoading(true);
+        try {
+            const canvas = await html2canvas(printRef.current, { scale: 2 });
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`Payslip_${selectedEmployee?.name}_${currentMonth}_${currentYear}.pdf`);
+            message.success('ดาวน์โหลด PDF สำเร็จ');
+        } catch (error) {
+            message.error('เกิดข้อผิดพลาดในการสร้าง PDF');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const calculateNetSalary = (record: PayrollRecord) => {
         if (record.netSalary !== undefined) return record.netSalary;
         const totalEarnings = record.baseSalary + record.earnings.overtime + record.earnings.bonus + (record.earnings.diligenceAllowance || 0);
@@ -332,7 +359,8 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                     >
                         คำนวณเงินเดือน
                     </Button>
-                    <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Export CSV</Button>
+                    <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>Excel</Button>
+                    <Button icon={<BankOutlined />} onClick={handleExportBank} style={{ color: '#0050b3', borderColor: '#0050b3' }}>Bank Export</Button>
                     <Button type="primary" icon={<CheckCircleOutlined />} onClick={handleApprovePayroll}>อนุมัติจ่าย</Button>
                 </Space>
             </div>
@@ -408,6 +436,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 footer={
                     <Space>
                         <Button onClick={() => setIsPayslipModalVisible(false)}>ปิด</Button>
+                        <Button icon={<DownloadOutlined />} onClick={handleDownloadPDF} loading={loading}>ดาวน์โหลด PDF</Button>
                         <Button type="primary" icon={<PrinterOutlined />} onClick={handlePrintPayslip}>พิมพ์สลิป</Button>
                     </Space>
                 }
