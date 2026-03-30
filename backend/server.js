@@ -2347,7 +2347,9 @@ async function runMigrations() {
             start_time TIME,
             end_time TIME,
             late_allowance_minutes INT DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            color VARCHAR(20) DEFAULT 'blue',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `CREATE TABLE IF NOT EXISTS employees (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -2470,7 +2472,15 @@ async function runMigrations() {
             id INT PRIMARY KEY,
             company_name VARCHAR(200),
             tax_id VARCHAR(20),
+            branch_code VARCHAR(10) DEFAULT '00000',
             address TEXT,
+            deduct_excess_sick_leave TINYINT(1) DEFAULT 0,
+            deduct_excess_personal_leave TINYINT(1) DEFAULT 0,
+            late_penalty_per_minute DECIMAL(10,2) DEFAULT 0.00,
+            auto_deduct_tax TINYINT(1) DEFAULT 0,
+            auto_deduct_sso TINYINT(1) DEFAULT 0,
+            payroll_cutoff_date INT DEFAULT 25,
+            diligence_allowance DECIMAL(10,2) DEFAULT 0.00,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `CREATE TABLE IF NOT EXISTS leave_quota_rules (
@@ -2557,6 +2567,14 @@ async function runMigrations() {
     await ensureColumnExists('leave_requests', 'approved_by', 'INT');
     await ensureColumnExists('overtime_requests', 'approved_at', 'TIMESTAMP NULL');
     await ensureColumnExists('overtime_requests', 'approved_by', 'INT');
+    await ensureColumnExists('shifts', 'color', "VARCHAR(20) DEFAULT 'blue'");
+    await ensureColumnExists('shifts', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+    await ensureColumnExists('system_settings', 'deduct_excess_sick_leave', 'TINYINT(1) DEFAULT 0');
+    await ensureColumnExists('system_settings', 'deduct_excess_personal_leave', 'TINYINT(1) DEFAULT 0');
+    await ensureColumnExists('system_settings', 'late_penalty_per_minute', 'DECIMAL(10,2) DEFAULT 0.00');
+    await ensureColumnExists('system_settings', 'auto_deduct_tax', 'TINYINT(1) DEFAULT 0');
+    await ensureColumnExists('system_settings', 'auto_deduct_sso', 'TINYINT(1) DEFAULT 0');
+    await ensureColumnExists('system_settings', 'payroll_cutoff_date', 'INT DEFAULT 25');
 
     // Seed Initial Data
     try {
