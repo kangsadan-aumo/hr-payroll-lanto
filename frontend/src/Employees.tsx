@@ -19,7 +19,7 @@ import dayjs from 'dayjs';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { API_BASE_URL as API } from './api';
+import { API_BASE_URL as API, UPLOAD_BASE_URL as UPLOAD_URL } from './api';
 
 const { Dragger } = Upload;
 
@@ -1050,7 +1050,7 @@ export const Employees: React.FC = () => {
                                         title: 'จัดการ', key: 'op', 
                                         render: (_, r) => (
                                             <Space>
-                                                <Button size="small" icon={<DownloadOutlined />} href={`http://localhost:5000/${r.file_path}`} target="_blank" />
+                                                <Button size="small" icon={<DownloadOutlined />} href={`${UPLOAD_URL}/${r.file_path}`} target="_blank" />
                                                 <Popconfirm title="ลบเอกสารนี้?" onConfirm={() => handleDeleteDoc(r.id)}>
                                                     <Button size="small" danger icon={<DeleteOutlined />} />
                                                 </Popconfirm>

@@ -15,6 +15,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import { API_BASE_URL as API } from './api';
 
 dayjs.extend(isSameOrBefore);
 
@@ -22,7 +23,7 @@ const { Title, Text } = Typography;
 const { Dragger } = Upload;
 const { Option } = Select;
 
-const API = 'http://localhost:5000/api';
+// API constant is now imported above
 
 interface DbSummary {
     employeeId: string;

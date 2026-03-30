@@ -119,7 +119,7 @@ export const Leave: React.FC = () => {
                 reason: values.reason
             };
 
-            await axios.post('http://localhost:5000/api/leaves/requests', payload);
+            await axios.post(`${API}/leaves/requests`, payload);
             message.success('ยื่นคำร้องขอลาสำเร็จ');
             setIsRequestModalVisible(false);
             form.resetFields();
@@ -133,7 +133,7 @@ export const Leave: React.FC = () => {
     // Handle Status change (Approve / Reject)
     const handleStatusUpdate = async (id: string, newStatus: 'approved' | 'rejected') => {
         try {
-            await axios.put(`http://localhost:5000/api/leaves/requests/${id}/status`, { status: newStatus });
+            await axios.put(`${API}/leaves/requests/${id}/status`, { status: newStatus });
             message.success(`อัปเดตสถานะเป็น ${newStatus === 'approved' ? 'อนุมัติ' : 'ไม่อนุมัติ'} เรียบร้อย`);
             setLeaveRequests(prev => prev.map(req => req.id === id ? { ...req, status: newStatus } : req));
         } catch (error) {

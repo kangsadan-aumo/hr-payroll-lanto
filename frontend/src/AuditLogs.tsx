@@ -3,6 +3,7 @@ import { Table, Card, Typography, Tag, Input } from 'antd';
 import { HistoryOutlined, SearchOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import { API_BASE_URL as API } from './api';
 
 const { Title } = Typography;
 
@@ -14,7 +15,7 @@ export const AuditLogs: React.FC = () => {
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/admin/audit-logs');
+            const res = await axios.get(`${API}/admin/audit-logs`);
             setLogs(res.data);
         } catch (error) {
             console.error('Failed to fetch audit logs');

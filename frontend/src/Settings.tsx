@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider } from 'antd';
 import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import axios from 'axios';
+import dayjs from 'dayjs';
+import { API_BASE_URL as API } from './api';
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -35,7 +36,7 @@ export const Settings: React.FC = () => {
     const [editingLeaveRuleId, setEditingLeaveRuleId] = useState<string | null>(null);
     const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
 
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const API_BASE = API;
 
     // --- Data Fetching ---
     const fetchAllData = async () => {

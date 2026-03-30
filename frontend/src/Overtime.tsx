@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from 'axios';
+import { API_BASE_URL as API } from './api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -36,7 +37,7 @@ export const Overtime: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [form] = Form.useForm();
 
-    const API_BASE = 'http://localhost:5000/api';
+    const API_BASE = API;
 
     const fetchData = async () => {
         setLoading(true);

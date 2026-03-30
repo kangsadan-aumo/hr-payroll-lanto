@@ -3,6 +3,7 @@ import { Card, Select, Button, Row, Col, Typography, Space, Table, message, Divi
 import { FileProtectOutlined, DownloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import { API_BASE_URL as API } from './api';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -21,7 +22,7 @@ export const GovReports: React.FC = () => {
     const fetchEmployees = async () => {
         setLoading(true);
         try {
-            const res = await axios.get('http://localhost:5000/api/employees');
+            const res = await axios.get(`${API}/employees`);
             setEmployees(res.data);
         } catch (error) {
             message.error('ไม่สามารถดึงข้อมูลพนักงานได้');
@@ -31,27 +32,27 @@ export const GovReports: React.FC = () => {
     };
 
     const downloadPND1 = () => {
-        window.open(`http://localhost:5000/api/reports/pnd1?month=${month}&year=${year}`, '_blank');
+        window.open(`${API}/reports/pnd1?month=${month}&year=${year}`, '_blank');
     };
 
     const downloadPND1Csv = () => {
-        window.open(`http://localhost:5000/api/reports/pnd1-csv?month=${month}&year=${year}`, '_blank');
+        window.open(`${API}/reports/pnd1-csv?month=${month}&year=${year}`, '_blank');
     };
 
     const downloadPND3Csv = () => {
-        window.open(`http://localhost:5000/api/reports/pnd3-csv?month=${month}&year=${year}`, '_blank');
+        window.open(`${API}/reports/pnd3-csv?month=${month}&year=${year}`, '_blank');
     };
 
     const downloadPND53Csv = () => {
-        window.open(`http://localhost:5000/api/reports/pnd53-csv?month=${month}&year=${year}`, '_blank');
+        window.open(`${API}/reports/pnd53-csv?month=${month}&year=${year}`, '_blank');
     };
 
     const downloadSSO = () => {
-        window.open(`http://localhost:5000/api/reports/sso?month=${month}&year=${year}`, '_blank');
+        window.open(`${API}/reports/sso?month=${month}&year=${year}`, '_blank');
     };
 
     const download50Tawi = (empId: string) => {
-        window.open(`http://localhost:5000/api/reports/50tawi/${empId}?year=${tawiYear}`, '_blank');
+        window.open(`${API}/reports/50tawi/${empId}?year=${tawiYear}`, '_blank');
     };
 
     const months = [

@@ -1695,6 +1695,99 @@ const PORT = process.env.PORT || 5000;
 
 async function runMigrations() {
     const migrations = [
+        `CREATE TABLE IF NOT EXISTS departments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS shifts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            start_time TIME,
+            end_time TIME,
+            late_allowance_minutes INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS employees (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_code VARCHAR(50) UNIQUE NOT NULL,
+            first_name VARCHAR(100) NOT NULL,
+            last_name VARCHAR(100) NOT NULL,
+            department_id INT,
+            shift_id INT,
+            base_salary DECIMAL(10, 2) DEFAULT 0.00,
+            status ENUM('active', 'inactive') DEFAULT 'active',
+            join_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+            FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS attendance_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            check_in_time DATETIME,
+            check_out_time DATETIME,
+            status VARCHAR(20),
+            late_minutes INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS leave_types (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            is_unpaid TINYINT(1) DEFAULT 0,
+            days_per_year INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS leave_requests (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            leave_type_id INT NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            reason TEXT,
+            status VARCHAR(20) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS payroll_records (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            period_month INT NOT NULL,
+            period_year INT NOT NULL,
+            base_salary DECIMAL(10, 2) DEFAULT 0.00,
+            overtime_pay DECIMAL(10, 2) DEFAULT 0.00,
+            bonus DECIMAL(10, 2) DEFAULT 0.00,
+            late_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            leave_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            tax_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            sso_deduction DECIMAL(10, 2) DEFAULT 0.00,
+            net_salary DECIMAL(10, 2) DEFAULT 0.00,
+            status VARCHAR(20) DEFAULT 'draft',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            UNIQUE(employee_id, period_month, period_year)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS system_settings (
+            id INT PRIMARY KEY,
+            company_name VARCHAR(200),
+            tax_id VARCHAR(20),
+            address TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS leave_quota_rules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            tenure_years INT NOT NULL,
+            vacation_days INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS public_holidays (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            holiday_date DATE NOT NULL UNIQUE,
+            name VARCHAR(150) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS diligence_allowance DECIMAL(10,2) DEFAULT 0.00`,
         `ALTER TABLE payroll_records ADD COLUMN IF NOT EXISTS diligence_allowance DECIMAL(10,2) DEFAULT 0.00`,
         `ALTER TABLE employees ADD COLUMN IF NOT EXISTS phone VARCHAR(20) DEFAULT NULL`,
