@@ -121,6 +121,7 @@ EMP002,สมหญิง,รักดี,IT Support,Developer,somying@company.c
 export const Employees: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [departmentsList, setDepartmentsList] = useState<any[]>([]);
+    const [positionsList, setPositionsList] = useState<any[]>([]);
     const [shiftsList, setShiftsList] = useState<any[]>([]);
     const [searchText, setSearchText] = useState('');
     const [drawerVisible, setDrawerVisible] = useState(false);
@@ -148,18 +149,21 @@ export const Employees: React.FC = () => {
     const [leaveQuotas, setLeaveQuotas] = useState<any[]>([]);
     const [quotaForm] = Form.useForm();
     const [newDeptName, setNewDeptName] = useState('');
+    const [newPositionName, setNewPositionName] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [empRes, depRes, shiftRes] = await Promise.all([
+            const [empRes, depRes, shiftRes, posRes] = await Promise.all([
                 axios.get(`${API}/employees`),
                 axios.get(`${API}/departments`),
                 axios.get(`${API}/shifts`),
+                axios.get(`${API}/positions`),
             ]);
             setEmployees(empRes.data);
             setDepartmentsList(depRes.data);
             setShiftsList(shiftRes.data);
+            setPositionsList(posRes.data);
         } catch {
             message.error('Failed to fetch data');
         } finally {
@@ -181,6 +185,48 @@ export const Employees: React.FC = () => {
             message.success('เพิ่มแผนกใหม่เรียบร้อยแล้ว');
         } catch (error) {
             message.error('ไม่สามารถเพิ่มแผนกได้');
+        }
+    };
+
+    const handleDeleteDepartment = async (id: number, name: string) => {
+        try {
+            await axios.delete(`${API}/departments/${id}`);
+            message.success(`ลบแผนก ${name} เรียบร้อยแล้ว`);
+            setDepartmentsList(prev => prev.filter(d => d.id !== id));
+            // If the deleted dept is currently selected in the form, reset it
+            if (form.getFieldValue('department_id') === id) {
+                form.setFieldsValue({ department_id: null });
+            }
+        } catch (error) {
+            message.error('ไม่สามารถลบแผนกได้ (อาจมีการใช้ข้อมูลนี้อยู่ในระบบ)');
+        }
+    };
+
+    const handleAddPosition = async (e?: any) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!newPositionName.trim()) return;
+        try {
+            const res = await axios.post(`${API}/positions`, { name: newPositionName });
+            const newPos = res.data;
+            setPositionsList(prev => [...prev, newPos]);
+            form.setFieldsValue({ position: newPos.name });
+            setNewPositionName('');
+            message.success('เพิ่มตำแหน่งใหม่เรียบร้อยแล้ว');
+        } catch (error) {
+            message.error('ไม่สามารถเพิ่มตำแหน่งได้');
+        }
+    };
+
+    const handleDeletePosition = async (id: number, name: string) => {
+        try {
+            await axios.delete(`${API}/positions/${id}`);
+            message.success(`ลบตำแหน่ง ${name} เรียบร้อยแล้ว`);
+            setPositionsList(prev => prev.filter(p => p.id !== id));
+            if (form.getFieldValue('position') === name) {
+                form.setFieldsValue({ position: null });
+            }
+        } catch (error) {
+            message.error('ไม่สามารถลบตำแหน่งได้');
         }
     };
 
@@ -837,13 +883,60 @@ export const Employees: React.FC = () => {
                                                 </>
                                             )}
                                         >
-                                            {departmentsList.map(d => <Option key={d.id} value={d.id}>{d.name}</Option>)}
+                                            {departmentsList.map(d => (
+                                                <Option key={d.id} value={d.id}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span>{d.name}</span>
+                                                        <DeleteOutlined 
+                                                            style={{ color: '#ff4d4f', fontSize: '12px' }} 
+                                                            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                                            onClick={() => handleDeleteDepartment(d.id, d.name)}
+                                                        />
+                                                    </div>
+                                                </Option>
+                                            ))}
                                         </Select>
                                     </Form.Item>
                                 </Col>
                                 <Col span={12}>
-                                    <Form.Item name="position" label="ตำแหน่ง" rules={[{ required: true, message: 'กรุณากรอกตำแหน่ง' }]}>
-                                        <Input placeholder="เช่น HR Admin" />
+                                    <Form.Item name="position" label="ตำแหน่ง" rules={[{ required: true, message: 'กรุณาเลือกตำแหน่ง' }]}>
+                                        <Select 
+                                            placeholder="เลือกตำแหน่ง"
+                                            showSearch
+                                            optionFilterProp="children"
+                                            dropdownRender={(menu) => (
+                                                <>
+                                                    {menu}
+                                                    <Divider style={{ margin: '8px 0' }} />
+                                                    <Space style={{ padding: '0 8px 4px' }}>
+                                                        <Input
+                                                            placeholder="เพิ่มตำแหน่งใหม่"
+                                                            value={newPositionName}
+                                                            onChange={(e) => setNewPositionName(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleAddPosition(e);
+                                                            }}
+                                                        />
+                                                        <Button type="text" icon={<PlusOutlined />} onClick={handleAddPosition}>
+                                                            เพิ่ม
+                                                        </Button>
+                                                    </Space>
+                                                </>
+                                            )}
+                                        >
+                                            {positionsList.map(p => (
+                                                <Option key={p.id} value={p.name}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <span>{p.name}</span>
+                                                        <DeleteOutlined 
+                                                            style={{ color: '#ff4d4f', fontSize: '12px' }} 
+                                                            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                                            onClick={() => handleDeletePosition(p.id, p.name)}
+                                                        />
+                                                    </div>
+                                                </Option>
+                                            ))}
+                                        </Select>
                                     </Form.Item>
                                 </Col>
                             </Row>

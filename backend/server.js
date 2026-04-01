@@ -341,6 +341,49 @@ app.post('/api/departments', async (req, res) => {
     }
 });
 
+app.delete('/api/departments/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM departments WHERE id = ?', [id]);
+        res.json({ message: 'Department deleted' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─────────────────────────────────────────────
+// POSITIONS
+// ─────────────────────────────────────────────
+app.get('/api/positions', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM positions ORDER BY id ASC');
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/positions', async (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name is required' });
+        const [result] = await pool.query('INSERT INTO positions (name) VALUES (?)', [name]);
+        res.status(201).json({ id: result.insertId, name, message: 'Position created' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/positions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM positions WHERE id = ?', [id]);
+        res.json({ message: 'Position deleted' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ─────────────────────────────────────────────
 // SETTINGS
 // ─────────────────────────────────────────────
@@ -2357,6 +2400,11 @@ async function runMigrations() {
     console.log('🏗️ Starting safe migrations...');
     const baseTables = [
         `CREATE TABLE IF NOT EXISTS departments (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS positions (
             id INT AUTO_INCREMENT PRIMARY KEY,
             name VARCHAR(100) NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
