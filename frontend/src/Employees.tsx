@@ -65,6 +65,7 @@ interface Employee {
 interface CsvRow {
     _rowIndex: number;
     employee_code: string;
+    title?: string;
     first_name: string;
     last_name: string;
     department: string;
@@ -84,10 +85,12 @@ interface CsvRow {
 // ── Map CSV header → internal field ──
 const CSV_HEADER_MAP: Record<string, string> = {
     'รหัสพนักงาน': 'employee_code',
+    'รหัส': 'employee_code',      // Alias
     'คำนำหน้า': 'title',
     'ชื่อ': 'first_name',
     'ชื่อกลาง': 'middle_name',
     'นามสกุล': 'last_name',
+    'สกุล': 'last_name',          // Alias
     'แผนก': 'department',
     'สาขา': 'department',       // alias
     'ตำแหน่ง': 'position',
@@ -99,6 +102,7 @@ const CSV_HEADER_MAP: Record<string, string> = {
     'เงินเดือนพื้นฐาน': 'base_salary',
     // English fallbacks
     'employee_code': 'employee_code',
+    'code': 'employee_code',
     'first_name': 'first_name',
     'last_name': 'last_name',
     'department': 'department',
@@ -339,6 +343,7 @@ export const Employees: React.FC = () => {
         try {
             const payload = validRows.map(r => ({
                 employee_code: r.employee_code || '',
+                title: r.title || null,
                 first_name: r.first_name,
                 last_name: r.last_name || '',
                 department: r.department || '',

@@ -542,30 +542,49 @@ app.post('/api/employees/import', async (req, res) => {
                 }
 
                 if (existingId) {
-                    await pool.query(
-                        `UPDATE employees SET 
-                            first_name=?, last_name=?, department_id=?, position=?, 
-                            join_date=?, status=?, base_salary=?, email=?, phone=?, 
-                            updated_at=CURRENT_TIMESTAMP 
-                         WHERE id=?`,
-                        [
-                            emp.first_name, emp.last_name, deptId, emp.position, 
-                            emp.join_date, emp.status || 'active', emp.base_salary || 0, 
-                            emp.email || null, emp.phone || null, existingId
-                        ]
-                    );
-                    updated++;
+                    const updateFields = [];
+                    const updateValues = [];
+                    
+                    if (emp.title) { updateFields.push('title=?'); updateValues.push(emp.title); }
+                    if (emp.first_name) { updateFields.push('first_name=?'); updateValues.push(emp.first_name); }
+                    if (emp.last_name) { updateFields.push('last_name=?'); updateValues.push(emp.last_name); }
+                    if (deptId) { updateFields.push('department_id=?'); updateValues.push(deptId); }
+                    if (emp.position) { updateFields.push('position=?'); updateValues.push(emp.position); }
+                    if (emp.join_date && emp.join_date !== 'Invalid Date' && emp.join_date !== 'NaN-NaN-NaN') { 
+                        updateFields.push('join_date=?'); updateValues.push(emp.join_date); 
+                    }
+                    if (emp.status) { updateFields.push('status=?'); updateValues.push(emp.status); }
+                    if (emp.base_salary !== undefined && emp.base_salary !== null && !isNaN(emp.base_salary)) { 
+                        updateFields.push('base_salary=?'); updateValues.push(emp.base_salary); 
+                    }
+                    if (emp.email) { updateFields.push('email=?'); updateValues.push(emp.email); }
+                    if (emp.phone) { updateFields.push('phone=?'); updateValues.push(emp.phone); }
+                    if (emp.id_number) { updateFields.push('id_number=?'); updateValues.push(emp.id_number); }
+                    if (emp.bank_name) { updateFields.push('bank_name=?'); updateValues.push(emp.bank_name); }
+                    if (emp.bank_account_number) { updateFields.push('bank_account_number=?'); updateValues.push(emp.bank_account_number); }
+
+                    if (updateFields.length > 0) {
+                        updateFields.push('updated_at=CURRENT_TIMESTAMP');
+                        updateValues.push(existingId);
+                        await pool.query(
+                            `UPDATE employees SET ${updateFields.join(', ')} WHERE id=?`,
+                            updateValues
+                        );
+                        updated++;
+                    }
                 } else {
                     const code = emp.employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
                     await pool.query(
                         `INSERT INTO employees (
-                            employee_code, first_name, last_name, department_id, 
-                            position, join_date, status, base_salary, email, phone
-                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            employee_code, title, first_name, last_name, department_id, 
+                            position, join_date, status, base_salary, email, phone, id_number, bank_name, bank_account_number
+                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
-                            code, emp.first_name, emp.last_name, deptId, 
-                            emp.position, emp.join_date, emp.status || 'active', 
-                            emp.base_salary || 0, emp.email || null, emp.phone || null
+                            code, emp.title || 'นาย', emp.first_name, emp.last_name || '', deptId, 
+                            emp.position || '', 
+                            (emp.join_date && emp.join_date !== 'Invalid Date') ? emp.join_date : dayjs().format('YYYY-MM-DD'), 
+                            emp.status || 'active', emp.base_salary || 0, 
+                            emp.email || null, emp.phone || null, emp.id_number || null, emp.bank_name || null, emp.bank_account_number || null
                         ]
                     );
                     created++;
