@@ -885,12 +885,22 @@ export const Employees: React.FC = () => {
                                         >
                                             {departmentsList.map(d => (
                                                 <Option key={d.id} value={d.id}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span>{d.name}</span>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
+                                                        <span style={{ 
+                                                            overflow: 'hidden', 
+                                                            textOverflow: 'ellipsis', 
+                                                            whiteSpace: 'nowrap', 
+                                                            flex: 1 
+                                                        }} title={d.name}>
+                                                            {d.name}
+                                                        </span>
                                                         <DeleteOutlined 
-                                                            style={{ color: '#ff4d4f', fontSize: '12px' }} 
+                                                            style={{ color: '#ff4d4f', fontSize: '12px', flexShrink: 0 }} 
                                                             onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                                                            onClick={() => handleDeleteDepartment(d.id, d.name)}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteDepartment(d.id, d.name);
+                                                            }}
                                                         />
                                                     </div>
                                                 </Option>
@@ -926,12 +936,22 @@ export const Employees: React.FC = () => {
                                         >
                                             {positionsList.map(p => (
                                                 <Option key={p.id} value={p.name}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span>{p.name}</span>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
+                                                        <span style={{ 
+                                                            overflow: 'hidden', 
+                                                            textOverflow: 'ellipsis', 
+                                                            whiteSpace: 'nowrap', 
+                                                            flex: 1 
+                                                        }} title={p.name}>
+                                                            {p.name}
+                                                        </span>
                                                         <DeleteOutlined 
-                                                            style={{ color: '#ff4d4f', fontSize: '12px' }} 
+                                                            style={{ color: '#ff4d4f', fontSize: '12px', flexShrink: 0 }} 
                                                             onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                                                            onClick={() => handleDeletePosition(p.id, p.name)}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeletePosition(p.id, p.name);
+                                                            }}
                                                         />
                                                     </div>
                                                 </Option>
