@@ -283,9 +283,14 @@ export const Employees: React.FC = () => {
                 }
 
                 let error = '';
-                if (!mapped.first_name) error = 'ไม่มีชื่อ';
-                else if (!mapped.join_date) error = 'ไม่มีวันที่เริ่มงาน';
-                else if (!dayjs(mapped.join_date).isValid()) error = `วันที่ไม่ถูกต้อง: ${mapped.join_date}`;
+                if (!mapped.first_name) {
+                    error = 'ไม่มีชื่อ';
+                } else if (!mapped.employee_code && !mapped.join_date) {
+                    // Only require join_date if employee_code is missing (likely a new employee)
+                    error = 'ไม่มีหัวใจสำคัญ (รหัสพนักงาน หรือ วันที่เริ่มงาน)';
+                } else if (mapped.join_date && !dayjs(mapped.join_date).isValid()) {
+                    error = `วันที่ไม่ถูกต้อง: ${mapped.join_date}`;
+                }
 
                 return {
                     ...mapped,
@@ -350,7 +355,7 @@ export const Employees: React.FC = () => {
                 position: r.position || '',
                 email: r.email || null,
                 phone: r.phone || null,
-                join_date: dayjs(r.join_date).format('YYYY-MM-DD'),
+                join_date: r.join_date ? dayjs(r.join_date).format('YYYY-MM-DD') : null,
                 status: r.status || 'active',
                 base_salary: parseFloat(r.base_salary) || 0,
                 id_number: r.id_number || null,
