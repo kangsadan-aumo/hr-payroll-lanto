@@ -90,21 +90,43 @@ export function parseLeaveCSV(csvContent: string): LeaveRecord[] {
     const lines = csvContent.split(/\r?\n/).filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
 
+    const headers = parseCSVLine(lines[0]);
+    const map: Record<string, number> = {};
+    
+    const HEADER_MAP: Record<string, string[]> = {
+        employeeId: ['รหัสพนักงาน', 'employee_id', 'employee id', 'รหัส', 'code'],
+        leaveType: ['ประเภทการลา', 'leave_type', 'leave type', 'ประเภท'],
+        startDate: ['วันที่เริ่มลา', 'start_date', 'start date', 'เริ่ม'],
+        endDate: ['วันที่สิ้นสุด', 'end_date', 'end date', 'สิ้นสุด'],
+        days: ['จำนวนวัน', 'days', 'count', 'วัน'],
+        reason: ['เหตุผล', 'reason', 'remark'],
+        status: ['สถานะ', 'status']
+    };
+
+    headers.forEach((h, i) => {
+        const lowerH = h.toLowerCase();
+        for (const [key, aliases] of Object.entries(HEADER_MAP)) {
+            if (aliases.some(a => lowerH.includes(a.toLowerCase()))) {
+                map[key] = i;
+            }
+        }
+    });
+
     const records: LeaveRecord[] = [];
     for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
-        if (values.length >= 10) {
+        if (values.length > 0) {
             records.push({
-                notifyDate: values[0],
-                employeeId: values[1],
-                name: values[2],
-                department: values[3],
-                leaveType: values[4],
-                startDate: values[5],
-                endDate: values[6],
-                days: parseFloat(values[7]) || 0,
-                status: values[8],
-                reason: values[9],
+                notifyDate: map['notifyDate'] !== undefined ? values[map['notifyDate']] : '',
+                employeeId: map['employeeId'] !== undefined ? values[map['employeeId']] : '',
+                name: map['name'] !== undefined ? values[map['name']] : '',
+                department: map['department'] !== undefined ? values[map['department']] : '',
+                leaveType: map['leaveType'] !== undefined ? values[map['leaveType']] : '',
+                startDate: map['startDate'] !== undefined ? values[map['startDate']] : '',
+                endDate: map['endDate'] !== undefined ? values[map['endDate']] : '',
+                days: map['days'] !== undefined ? parseFloat(values[map['days']]) : 0,
+                status: map['status'] !== undefined ? values[map['status']] : 'approved',
+                reason: map['reason'] !== undefined ? values[map['reason']] : '',
             });
         }
     }

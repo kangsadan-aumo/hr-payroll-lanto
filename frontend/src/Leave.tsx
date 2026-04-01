@@ -102,20 +102,36 @@ export const Leave: React.FC = () => {
         return matchSearch && matchStatus && matchDate;
     });
 
+    const calculateWorkDays = (start: dayjs.Dayjs, end: dayjs.Dayjs) => {
+        let count = 0;
+        let cur = start.clone();
+        while (cur.isBefore(end) || cur.isSame(end, 'day')) {
+            const day = cur.day();
+            if (day !== 0 && day !== 6) count++;
+            cur = cur.add(1, 'day');
+        }
+        return count;
+    };
+
+    const handleDateRangeChange = (dates: any) => {
+        if (dates && dates[0] && dates[1]) {
+            const days = calculateWorkDays(dates[0], dates[1]);
+            form.setFieldsValue({ total_days: days });
+        }
+    };
+
     // Form submission
     const handleRequestSubmit = async (values: any) => {
         try {
             const startStr = values.dateRange[0].format('YYYY-MM-DD');
             const endStr = values.dateRange[1].format('YYYY-MM-DD');
-            // Mock total days logic
-            const dayDiff = values.dateRange[1].diff(values.dateRange[0], 'days') + 1;
-
+            
             const payload = {
                 employee_id: values.employee_id,
                 leave_type_id: values.leave_type_id,
                 start_date: startStr,
                 end_date: endStr,
-                total_days: dayDiff,
+                total_days: values.total_days,
                 reason: values.reason
             };
 
@@ -406,7 +422,12 @@ export const Leave: React.FC = () => {
                         </Col>
                         <Col span={12}>
                             <Form.Item name="dateRange" label="ช่วงวันลา" rules={[{ required: true, message: 'กรุณาระบุช่วงวันที่ต้องการลา' }]}>
-                                <RangePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                                <RangePicker style={{ width: '100%' }} format="YYYY-MM-DD" onChange={handleDateRangeChange} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item name="total_days" label="จำนวนวันลา (วัน)" rules={[{ required: true, message: 'กรุณาระบุจำนวนวัน' }]}>
+                                <Input type="number" step="0.5" placeholder="เช่น 1 หรือ 0.5" />
                             </Form.Item>
                         </Col>
                     </Row>
