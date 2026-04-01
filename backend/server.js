@@ -490,23 +490,43 @@ app.post('/api/employees/import', async (req, res) => {
                         deptId = newDept.insertId;
                     }
                 }
-                if (emp.id) {
-                    const [exist] = await pool.query('SELECT id FROM employees WHERE id = ?', [emp.id]);
-                    if (exist.length > 0) {
-                        await pool.query(
-                            `UPDATE employees SET first_name=?, last_name=?, department_id=?, position=?, join_date=?, status=?, base_salary=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
-                            [emp.first_name, emp.last_name, deptId, emp.position, emp.join_date, emp.status || 'active', emp.base_salary || 0, emp.id]
-                        );
-                        updated++;
-                        continue;
-                    }
+
+                // Check if employee exists by ID OR Employee Code
+                let existingId = emp.id;
+                if (!existingId && emp.employee_code) {
+                    const [codeRows] = await pool.query('SELECT id FROM employees WHERE employee_code = ?', [emp.employee_code]);
+                    if (codeRows.length > 0) existingId = codeRows[0].id;
                 }
-                const code = emp.employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
-                await pool.query(
-                    `INSERT INTO employees (employee_code, first_name, last_name, department_id, position, join_date, status, base_salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [code, emp.first_name, emp.last_name, deptId, emp.position, emp.join_date, emp.status || 'active', emp.base_salary || 0]
-                );
-                created++;
+
+                if (existingId) {
+                    await pool.query(
+                        `UPDATE employees SET 
+                            first_name=?, last_name=?, department_id=?, position=?, 
+                            join_date=?, status=?, base_salary=?, email=?, phone=?, 
+                            updated_at=CURRENT_TIMESTAMP 
+                         WHERE id=?`,
+                        [
+                            emp.first_name, emp.last_name, deptId, emp.position, 
+                            emp.join_date, emp.status || 'active', emp.base_salary || 0, 
+                            emp.email || null, emp.phone || null, existingId
+                        ]
+                    );
+                    updated++;
+                } else {
+                    const code = emp.employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
+                    await pool.query(
+                        `INSERT INTO employees (
+                            employee_code, first_name, last_name, department_id, 
+                            position, join_date, status, base_salary, email, phone
+                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            code, emp.first_name, emp.last_name, deptId, 
+                            emp.position, emp.join_date, emp.status || 'active', 
+                            emp.base_salary || 0, emp.email || null, emp.phone || null
+                        ]
+                    );
+                    created++;
+                }
             } catch (e) {
                 errors.push({ employee: emp.employee_code, error: e.message });
             }

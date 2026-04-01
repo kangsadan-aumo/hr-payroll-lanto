@@ -446,6 +446,8 @@ export const Employees: React.FC = () => {
         },
         { title: 'แผนก', dataIndex: 'department', key: 'department' },
         { title: 'ตำแหน่ง', dataIndex: 'position', key: 'position' },
+        { title: 'อีเมล', dataIndex: 'email', key: 'email' },
+        { title: 'เบอร์ติดต่อ', dataIndex: 'phone', key: 'phone' },
         { title: 'วันที่เริ่มงาน', dataIndex: 'join_date', key: 'join_date', width: 120 },
         {
             title: 'สถานะงาน', dataIndex: 'status', key: 'status', width: 100,
