@@ -2697,18 +2697,26 @@ async function runMigrations() {
 
     // Seed Initial Data
     try {
+        // Seed System Settings
         const [rows] = await pool.query('SELECT id FROM system_settings LIMIT 1');
         if (rows.length === 0) {
             await pool.query('INSERT INTO system_settings (id, company_name) VALUES (1, "My Company")');
             console.log('🌱 Seeded default system_settings');
         }
 
-        const [types] = await pool.query('SELECT id FROM leave_types LIMIT 1');
-        if (types.length === 0) {
-            await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', ['ลาป่วย (Sick Leave)', 30, 0]);
-            await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', ['ลากิจ (Personal Leave)', 3, 0]);
-            await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', ['ลาพักร้อน (Vacation)', 6, 0]);
-            console.log('🌱 Seeded default leave_types');
+        // Seed Core Leave Types if missing (by Name)
+        const coreTypes = [
+            { name: 'ลาป่วย (Sick Leave)', days: 30, unpaid: 0 },
+            { name: 'ลากิจ (Personal Leave)', days: 3, unpaid: 0 },
+            { name: 'ลาพักร้อน (Vacation)', days: 6, unpaid: 0 }
+        ];
+
+        for (const ct of coreTypes) {
+            const [existing] = await pool.query('SELECT id FROM leave_types WHERE name = ?', [ct.name]);
+            if (existing.length === 0) {
+                await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', [ct.name, ct.days, ct.unpaid]);
+                console.log(`🌱 Seeded missing core type: ${ct.name}`);
+            }
         }
     } catch (err) {
         console.warn('⚠️ Seeding error:', err.message);
