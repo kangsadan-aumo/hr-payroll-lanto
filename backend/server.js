@@ -648,15 +648,23 @@ app.put('/api/employees/:id/leave-quotas', async (req, res) => {
 app.post('/api/employees/recalculate-all-quotas', async (req, res) => {
     let connection;
     try {
-        connection = await pool.getConnection(); // Use a single connection for the loop
+        connection = await pool.getConnection();
         console.log('🔄 Starting recalculation for all active employees...');
         
-        // 1. Get all vacation rules and sort DESC
+        // 1. Get ALL leave types first to avoid hardcoded IDs
+        const [allLeaveTypes] = await connection.query('SELECT * FROM leave_types');
+        const vacationType = allLeaveTypes.find(t => t.name.includes('พักร้อน'));
+        
+        if (!vacationType) {
+            throw new Error('ไม่พบประเภทการลา "ลาพักร้อน" ในระบบ กรุณาตรวจสอบการตั้งค่าประเภทการลา');
+        }
+
+        const vacationId = vacationType.id;
+        const fixedTypes = allLeaveTypes.filter(t => t.days_per_year > 0 && t.id !== vacationId);
+
+        // 2. Get all vacation rules
         const [rules] = await connection.query('SELECT * FROM leave_quota_rules ORDER BY tenure_years DESC');
         
-        // 2. Get all leave types that have a fixed limit
-        const [fixedTypes] = await connection.query('SELECT * FROM leave_types WHERE days_per_year > 0 AND id != 3');
-
         // 3. Get all active employees
         const [employees] = await connection.query('SELECT id, join_date FROM employees WHERE status = "active"');
         
@@ -664,7 +672,7 @@ app.post('/api/employees/recalculate-all-quotas', async (req, res) => {
         let updatedCount = 0;
 
         for (const emp of employees) {
-            // A. Calculate Vacation (based on tenure)
+            // A. Calculate Vacation
             let vacationQuota = 0;
             if (emp.join_date && dayjs(emp.join_date).isValid()) {
                 const joinDate = dayjs(emp.join_date);
@@ -673,12 +681,12 @@ app.post('/api/employees/recalculate-all-quotas', async (req, res) => {
                 vacationQuota = applicableRule ? (parseFloat(applicableRule.vacation_days) || 0) : 0;
             }
 
-            // UPSERT Vacation (ID 3)
+            // UPSERT Vacation
             await connection.query(`
                 INSERT INTO employee_leave_quotas (employee_id, leave_type_id, quota_days)
-                VALUES (?, 3, ?)
+                VALUES (?, ?, ?)
                 ON DUPLICATE KEY UPDATE quota_days = VALUES(quota_days)
-            `, [emp.id, vacationQuota]);
+            `, [emp.id, vacationId, vacationQuota]);
 
             // B. Apply fixed limits for other types
             for (const lt of fixedTypes) {
@@ -2693,6 +2701,14 @@ async function runMigrations() {
         if (rows.length === 0) {
             await pool.query('INSERT INTO system_settings (id, company_name) VALUES (1, "My Company")');
             console.log('🌱 Seeded default system_settings');
+        }
+
+        const [types] = await pool.query('SELECT id FROM leave_types LIMIT 1');
+        if (types.length === 0) {
+            await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', ['ลาป่วย (Sick Leave)', 30, 0]);
+            await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', ['ลากิจ (Personal Leave)', 3, 0]);
+            await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', ['ลาพักร้อน (Vacation)', 6, 0]);
+            console.log('🌱 Seeded default leave_types');
         }
     } catch (err) {
         console.warn('⚠️ Seeding error:', err.message);
