@@ -58,6 +58,8 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     waitForConnections: true,
     queueLimit: 0,
+    dateStrings: true, // Prevent converting to JS Date (which sends ISO strings with UTC 'Z')
+    timezone: '+07:00', // Align connection timezone to Thailand time
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : null
 });
 
@@ -1668,7 +1670,7 @@ app.get('/api/attendance', async (req, res) => {
     }
 });
 
-// POST นำเข้าข้อมูล attendance จาก CSV (upsert: ลบซ้ำแล้วใส่ใหม่)
+// POST นำเข้าข้อมูล attendance จาก CSV (upsert: ข้ามตารางที่มีแล้ว)
 app.post('/api/attendance/import', async (req, res) => {
     try {
         const { records } = req.body;
@@ -1680,7 +1682,7 @@ app.post('/api/attendance/import', async (req, res) => {
         let skipped = 0;
         const errors = [];
 
-        // Pre-fetch employees to save queries
+        // 1. Pre-fetch employees to save queries
         const [empRows] = await pool.query(`
             SELECT e.id, e.employee_code, e.shift_id, s.start_time, s.late_allowance_minutes
             FROM employees e
@@ -1690,6 +1692,33 @@ app.post('/api/attendance/import', async (req, res) => {
         for (const e of empRows) {
             empMap.set(String(e.employee_code).trim(), e);
         }
+
+        // 2. Pre-fetch existing attendance logs for the uploaded date bounds to skip duplicates
+        let minDateStr = null;
+        let maxDateStr = null;
+
+        for (const rec of records) {
+            if (rec.check_in_time) {
+                const datePart = rec.check_in_time.substring(0, 10);
+                if (!minDateStr || datePart < minDateStr) minDateStr = datePart;
+                if (!maxDateStr || datePart > maxDateStr) maxDateStr = datePart;
+            }
+        }
+
+        let existingSet = new Set();
+        if (minDateStr && maxDateStr) {
+            const [attRows] = await pool.query(
+                `SELECT employee_id, DATE_FORMAT(check_in_time, '%Y-%m-%d') as check_date 
+                 FROM attendance_logs 
+                 WHERE check_in_time >= ? AND check_in_time < DATE_ADD(?, INTERVAL 1 DAY)`,
+                [minDateStr, maxDateStr]
+            );
+            attRows.forEach(row => {
+                existingSet.add(`${row.employee_id}_${row.check_date}`);
+            });
+        }
+
+        const insertData = [];
 
         for (const rec of records) {
             try {
@@ -1703,25 +1732,12 @@ app.post('/api/attendance/import', async (req, res) => {
                 const checkInDatetime = rec.check_in_time || null;
                 const checkDate = checkInDatetime ? checkInDatetime.substring(0, 10) : null;
 
-                let shouldSkip = false;
                 if (checkDate) {
-                    const [existing] = await pool.query(
-                        `SELECT id FROM attendance_logs WHERE employee_id = ? AND check_in_time >= ? AND check_in_time < DATE_ADD(?, INTERVAL 1 DAY) LIMIT 1`,
-                        [employeeId, checkDate, checkDate]
-                    );
-
-                    if (existing.length > 0) {
+                    // Check if already exists in the pre-fetched set
+                    if (existingSet.has(`${employeeId}_${checkDate}`)) {
                         skipped++;
-                        shouldSkip = true;
-                    } else {
-                        inserted++;
+                        continue;
                     }
-                } else {
-                    inserted++;
-                }
-
-                if (shouldSkip) {
-                    continue;
                 }
 
                 let lateMinutes = 0;
@@ -1735,7 +1751,9 @@ app.post('/api/attendance/import', async (req, res) => {
                     if (checkInTime) {
                         const [sh, sm] = shiftStart.split(':').map(Number);
                         const [ch, cm] = checkInTime.split(':').map(Number);
-                        const diff = (ch * 60 + cm) - (sh * 60 + sm);
+                        // handle diff logic properly if overnight shift, but assume same day
+                        let diff = (ch * 60 + cm) - (sh * 60 + sm);
+                        if (diff < -720) diff += 1440; // overnight handling optionally
                         if (diff > allowance) {
                             lateMinutes = diff - allowance;
                             attendanceStatus = 'late';
@@ -1748,20 +1766,35 @@ app.post('/api/attendance/import', async (req, res) => {
                     }
                 }
 
-                await pool.query(`
-                    INSERT INTO attendance_logs 
-                        (employee_id, check_in_time, check_out_time, status, late_minutes)
-                    VALUES (?, ?, ?, ?, ?)
-                `, [
+                insertData.push([
                     employeeId,
                     rec.check_in_time || null,
                     rec.check_out_time || null,
                     attendanceStatus,
                     lateMinutes
                 ]);
+                inserted++;
+
+                // If added, we track it so multiple rows in same CSV for same date don't duplicate
+                if (checkDate) {
+                    existingSet.add(`${employeeId}_${checkDate}`);
+                }
 
             } catch (e) {
                 errors.push({ code: rec.employee_code, error: e.message });
+            }
+        }
+
+        // 3. Bulk Insert
+        if (insertData.length > 0) {
+            const batchSize = 500;
+            for (let i = 0; i < insertData.length; i += batchSize) {
+                const batch = insertData.slice(i, i + batchSize);
+                await pool.query(`
+                    INSERT INTO attendance_logs 
+                        (employee_id, check_in_time, check_out_time, status, late_minutes)
+                    VALUES ?
+                `, [batch]);
             }
         }
 
