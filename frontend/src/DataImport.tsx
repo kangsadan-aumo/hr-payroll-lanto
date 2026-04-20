@@ -259,7 +259,7 @@ export const DataImport: React.FC = () => {
                 setImportErrors(res.data.errors);
                 message.warning(`นำเข้าสำเร็จบางส่วน: พบ ${res.data.errors.length} รายการที่มีปัญหา`);
             } else {
-                message.success(`นำเข้าสำเร็จ: เพิ่มใหม่ ${res.data.inserted} รายการ, แทนที่/อัปเดต ${res.data.replaced} รายการ`);
+                message.success(`นำเข้าสำเร็จ: เพิ่มใหม่ ${res.data.inserted} รายการ, ข้ามข้อมูลซ้ำ ${res.data.skipped || 0} รายการ`);
                 setPreviewRecords([]);
                 setImportErrors([]);
                 setIsUploadModalVisible(false);

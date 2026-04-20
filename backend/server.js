@@ -1677,40 +1677,42 @@ app.post('/api/attendance/import', async (req, res) => {
         }
 
         let inserted = 0;
-        let replaced = 0;
+        let skipped = 0;
         const errors = [];
+
+        // Pre-fetch employees to save queries
+        const [empRows] = await pool.query(`
+            SELECT e.id, e.employee_code, e.shift_id, s.start_time, s.late_allowance_minutes
+            FROM employees e
+            LEFT JOIN shifts s ON e.shift_id = s.id
+        `);
+        const empMap = new Map();
+        for (const e of empRows) {
+            empMap.set(String(e.employee_code).trim(), e);
+        }
 
         for (const rec of records) {
             try {
-                // หา employee_id จาก employee_code
-                const [empRows] = await pool.query(
-                    'SELECT id FROM employees WHERE employee_code = ?',
-                    [rec.employee_code]
-                );
-
-                if (empRows.length === 0) {
+                const empData = empMap.get(String(rec.employee_code).trim());
+                if (!empData) {
                     errors.push({ code: rec.employee_code, error: 'ไม่พบรหัสพนักงานในระบบ' });
                     continue;
                 }
 
-                const employeeId = empRows[0].id;
+                const employeeId = empData.id;
                 const checkInDatetime = rec.check_in_time || null;
                 const checkDate = checkInDatetime ? checkInDatetime.substring(0, 10) : null;
 
-                // UPSERT: ถ้ามีข้อมูลวันเดิมของพนักงานนั้น → ลบทิ้งแล้วใส่ใหม่
+                let shouldSkip = false;
                 if (checkDate) {
                     const [existing] = await pool.query(
-                        `SELECT id FROM attendance_logs 
-                         WHERE employee_id = ? AND DATE(check_in_time) = ?`,
-                        [employeeId, checkDate]
+                        `SELECT id FROM attendance_logs WHERE employee_id = ? AND check_in_time >= ? AND check_in_time < DATE_ADD(?, INTERVAL 1 DAY) LIMIT 1`,
+                        [employeeId, checkDate, checkDate]
                     );
 
                     if (existing.length > 0) {
-                        await pool.query(
-                            `DELETE FROM attendance_logs WHERE employee_id = ? AND DATE(check_in_time) = ?`,
-                            [employeeId, checkDate]
-                        );
-                        replaced++;
+                        skipped++;
+                        shouldSkip = true;
                     } else {
                         inserted++;
                     }
@@ -1718,22 +1720,17 @@ app.post('/api/attendance/import', async (req, res) => {
                     inserted++;
                 }
 
-                // คำนวณ late_minutes จาก shift ของพนักงาน (ถ้ามี)
-                const [shiftRows] = await pool.query(`
-                    SELECT s.start_time, s.late_allowance_minutes
-                    FROM employees e
-                    LEFT JOIN shifts s ON e.shift_id = s.id
-                    WHERE e.id = ?
-                `, [employeeId]);
+                if (shouldSkip) {
+                    continue;
+                }
 
                 let lateMinutes = 0;
                 let attendanceStatus = rec.status || 'on_time';
 
-                if (shiftRows.length > 0 && shiftRows[0].start_time && checkInDatetime) {
-                    const shiftStart = shiftRows[0].start_time; // "HH:MM:SS"
-                    const allowance = parseInt(shiftRows[0].late_allowance_minutes || 0);
-                    const checkInTime = checkInDatetime.substring(11, 19)
-| checkInDatetime.substring(11);
+                if (empData.start_time && checkInDatetime) {
+                    const shiftStart = empData.start_time;
+                    const allowance = parseInt(empData.late_allowance_minutes || 0);
+                    const checkInTime = checkInDatetime.substring(11, 19) || checkInDatetime.substring(11);
 
                     if (checkInTime) {
                         const [sh, sm] = shiftStart.split(':').map(Number);
@@ -1745,7 +1742,6 @@ app.post('/api/attendance/import', async (req, res) => {
                         }
                     }
                 } else if (rec.status) {
-                    // ใช้ status จาก CSV
                     if (rec.status.includes('สาย') || rec.status === 'late') {
                         attendanceStatus = 'late';
                         lateMinutes = parseInt(rec.late_minutes || 0);
@@ -1770,10 +1766,10 @@ app.post('/api/attendance/import', async (req, res) => {
         }
 
         res.json({
-            message: `นำเข้าสำเร็จ: เพิ่มใหม่ ${inserted} รายการ, แทนที่ ${replaced} รายการ`,
+            message: `นำเข้าสำเร็จ: เพิ่มใหม่ ${inserted} รายการ, ข้ามข้อมูลซ้ำ ${skipped} รายการ`,
             inserted,
-            replaced,
-            total: inserted + replaced,
+            skipped,
+            total: inserted + skipped,
             errors,
         });
     } catch (error) {
