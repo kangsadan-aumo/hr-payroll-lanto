@@ -1705,20 +1705,21 @@ app.post('/api/attendance/import', async (req, res) => {
             }
         }
 
-        let existingSet = new Set();
+        let existingMap = new Map();
         if (minDateStr && maxDateStr) {
             const [attRows] = await pool.query(
-                `SELECT employee_id, DATE_FORMAT(check_in_time, '%Y-%m-%d') as check_date 
+                `SELECT id, employee_id, DATE_FORMAT(check_in_time, '%Y-%m-%d') as check_date 
                  FROM attendance_logs 
                  WHERE check_in_time >= ? AND check_in_time < DATE_ADD(?, INTERVAL 1 DAY)`,
                 [minDateStr, maxDateStr]
             );
             attRows.forEach(row => {
-                existingSet.add(`${row.employee_id}_${row.check_date}`);
+                existingMap.set(`${row.employee_id}_${row.check_date}`, row.id);
             });
         }
 
         const insertData = [];
+        const updateData = [];
 
         for (const rec of records) {
             try {
@@ -1732,12 +1733,9 @@ app.post('/api/attendance/import', async (req, res) => {
                 const checkInDatetime = rec.check_in_time || null;
                 const checkDate = checkInDatetime ? checkInDatetime.substring(0, 10) : null;
 
+                let existingId = null;
                 if (checkDate) {
-                    // Check if already exists in the pre-fetched set
-                    if (existingSet.has(`${employeeId}_${checkDate}`)) {
-                        skipped++;
-                        continue;
-                    }
+                    existingId = existingMap.get(`${employeeId}_${checkDate}`);
                 }
 
                 let lateMinutes = 0;
@@ -1766,18 +1764,32 @@ app.post('/api/attendance/import', async (req, res) => {
                     }
                 }
 
-                insertData.push([
-                    employeeId,
-                    rec.check_in_time || null,
-                    rec.check_out_time || null,
-                    attendanceStatus,
-                    lateMinutes
-                ]);
-                inserted++;
-
-                // If added, we track it so multiple rows in same CSV for same date don't duplicate
-                if (checkDate) {
-                    existingSet.add(`${employeeId}_${checkDate}`);
+                if (existingId && typeof existingId === 'number') {
+                    updateData.push({
+                        id: existingId,
+                        check_in_time: rec.check_in_time || null,
+                        check_out_time: rec.check_out_time || null,
+                        status: attendanceStatus,
+                        late_minutes: lateMinutes
+                    });
+                    skipped++;
+                } else if (existingId === 'new') {
+                    // Already added to insertData in this batch, maybe update the entry in insertData?
+                    // For now, just skip to avoid duplicates in same batch if they are separate rows
+                    skipped++;
+                } else {
+                    insertData.push([
+                        employeeId,
+                        rec.check_in_time || null,
+                        rec.check_out_time || null,
+                        attendanceStatus,
+                        lateMinutes
+                    ]);
+                    inserted++;
+                    
+                    if (checkDate) {
+                        existingMap.set(`${employeeId}_${checkDate}`, 'new'); 
+                    }
                 }
 
             } catch (e) {
@@ -1797,12 +1809,33 @@ app.post('/api/attendance/import', async (req, res) => {
                 `, [batch]);
             }
         }
+        // 4. Individual Updates (for existing records)
+        let updated = 0;
+        if (updateData.length > 0) {
+            for (const upd of updateData) {
+                try {
+                    await pool.query(
+                        `UPDATE attendance_logs SET 
+                            check_in_time = ?, 
+                            check_out_time = ?, 
+                            status = ?, 
+                            late_minutes = ? 
+                         WHERE id = ?`,
+                        [upd.check_in_time, upd.check_out_time, upd.status, upd.late_minutes, upd.id]
+                    );
+                    updated++;
+                } catch (e) {
+                    errors.push({ id: upd.id, error: `Update failed: ${e.message}` });
+                }
+            }
+        }
 
         res.json({
-            message: `นำเข้าสำเร็จ: เพิ่มใหม่ ${inserted} รายการ, ข้ามข้อมูลซ้ำ ${skipped} รายการ`,
+            message: `นำเข้าสำเร็จ: เพิ่มใหม่ ${inserted} รายการ, อัปเดตข้อมูลเดิม ${updated} รายการ`,
             inserted,
-            skipped,
-            total: inserted + skipped,
+            updated,
+            skipped: skipped - updated, // Remaining skipped (if any)
+            total: inserted + updated,
             errors,
         });
     } catch (error) {
