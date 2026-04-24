@@ -1559,15 +1559,18 @@ app.get('/api/attendance', async (req, res) => {
             SELECT al.*, 
                    e.employee_code, CONCAT(e.first_name,' ',e.last_name) as emp_name,
                    d.name as department,
-                   s.start_time as shift_start_time,
-                   s.late_allowance_minutes
+                   IFNULL(s.start_time, es.start_time) as shift_start_time,
+                   IFNULL(s.late_allowance_minutes, es.late_allowance_minutes) as late_allowance_minutes,
+                   s.name as matched_shift_name
             FROM attendance_logs al
             JOIN employees e ON al.employee_id = e.id
             LEFT JOIN departments d ON e.department_id = d.id
-            LEFT JOIN shifts s ON e.shift_id = s.id
+            LEFT JOIN shifts s ON al.shift_id = s.id
+            LEFT JOIN shifts es ON e.shift_id = es.id
             ${whereClause}
             ORDER BY al.check_in_time DESC
         `, params);
+
 
         // โหลดกะทั้งหมดเพื่อจับคู่ในกรณีที่พนักงานไม่มีกะ (กะไม่แน่นอน)
         const [allShifts] = await pool.query('SELECT * FROM shifts ORDER BY start_time ASC');
@@ -1718,7 +1721,14 @@ app.post('/api/attendance/import', async (req, res) => {
             });
         }
 
+        const [allShifts] = await pool.query('SELECT id, name, start_time, late_allowance_minutes FROM shifts');
+        const shiftMap = new Map();
+        allShifts.forEach(s => {
+            shiftMap.set(String(s.name).trim().toLowerCase(), s);
+        });
+
         const insertData = [];
+
         const updateData = [];
 
         for (const rec of records) {
@@ -1738,23 +1748,41 @@ app.post('/api/attendance/import', async (req, res) => {
                     existingId = existingMap.get(`${employeeId}_${checkDate}`);
                 }
 
-                let lateMinutes = 0;
-                let attendanceStatus = rec.status || 'on_time';
+                let shiftId = null;
+                let actualShift = null;
 
-                if (empData.start_time && checkInDatetime) {
-                    const shiftStart = empData.start_time;
-                    const allowance = parseInt(empData.late_allowance_minutes || 0);
+                // 1. Check if record has a specific shift name
+                if (rec.shift_name) {
+                    const matchedShift = shiftMap.get(String(rec.shift_name).trim().toLowerCase());
+                    if (matchedShift) {
+                        shiftId = matchedShift.id;
+                        actualShift = matchedShift;
+                    }
+                }
+
+                if (empData.start_time && checkInDatetime && !actualShift) {
+                    actualShift = {
+                        start_time: empData.start_time,
+                        late_allowance_minutes: empData.late_allowance_minutes
+                    };
+                }
+
+                if (actualShift && checkInDatetime) {
+                    const shiftStart = actualShift.start_time;
+                    const allowance = parseInt(actualShift.late_allowance_minutes || 0);
                     const checkInTime = checkInDatetime.substring(11, 19) || checkInDatetime.substring(11);
 
                     if (checkInTime) {
                         const [sh, sm] = shiftStart.split(':').map(Number);
                         const [ch, cm] = checkInTime.split(':').map(Number);
-                        // handle diff logic properly if overnight shift, but assume same day
                         let diff = (ch * 60 + cm) - (sh * 60 + sm);
-                        if (diff < -720) diff += 1440; // overnight handling optionally
+                        if (diff < -720) diff += 1440; 
                         if (diff > allowance) {
                             lateMinutes = diff - allowance;
                             attendanceStatus = 'late';
+                        } else {
+                            lateMinutes = 0;
+                            attendanceStatus = 'on_time';
                         }
                     }
                 } else if (rec.status) {
@@ -1770,9 +1798,11 @@ app.post('/api/attendance/import', async (req, res) => {
                         check_in_time: rec.check_in_time || null,
                         check_out_time: rec.check_out_time || null,
                         status: attendanceStatus,
-                        late_minutes: lateMinutes
+                        late_minutes: lateMinutes,
+                        shift_id: shiftId
                     });
                     skipped++;
+
                 } else if (existingId === 'new') {
                     // Already added to insertData in this batch, maybe update the entry in insertData?
                     // For now, just skip to avoid duplicates in same batch if they are separate rows
@@ -1783,8 +1813,10 @@ app.post('/api/attendance/import', async (req, res) => {
                         rec.check_in_time || null,
                         rec.check_out_time || null,
                         attendanceStatus,
-                        lateMinutes
+                        lateMinutes,
+                        shiftId
                     ]);
+
                     inserted++;
                     
                     if (checkDate) {
@@ -1804,9 +1836,10 @@ app.post('/api/attendance/import', async (req, res) => {
                 const batch = insertData.slice(i, i + batchSize);
                 await pool.query(`
                     INSERT INTO attendance_logs 
-                        (employee_id, check_in_time, check_out_time, status, late_minutes)
+                        (employee_id, check_in_time, check_out_time, status, late_minutes, shift_id)
                     VALUES ?
                 `, [batch]);
+
             }
         }
         // 4. Individual Updates (for existing records)
@@ -1819,10 +1852,12 @@ app.post('/api/attendance/import', async (req, res) => {
                             check_in_time = ?, 
                             check_out_time = ?, 
                             status = ?, 
-                            late_minutes = ? 
+                            late_minutes = ?,
+                            shift_id = ?
                          WHERE id = ?`,
-                        [upd.check_in_time, upd.check_out_time, upd.status, upd.late_minutes, upd.id]
+                        [upd.check_in_time, upd.check_out_time, upd.status, upd.late_minutes, upd.shift_id, upd.id]
                     );
+
                     updated++;
                 } catch (e) {
                     errors.push({ id: upd.id, error: `Update failed: ${e.message}` });
@@ -2756,6 +2791,8 @@ async function runMigrations() {
     await ensureColumnExists('system_settings', 'auto_deduct_tax', 'TINYINT(1) DEFAULT 0');
     await ensureColumnExists('system_settings', 'auto_deduct_sso', 'TINYINT(1) DEFAULT 0');
     await ensureColumnExists('system_settings', 'payroll_cutoff_date', 'INT DEFAULT 25');
+    await ensureColumnExists('attendance_logs', 'shift_id', 'INT NULL');
+
 
     // Seed Initial Data
     try {

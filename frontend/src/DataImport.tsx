@@ -52,7 +52,9 @@ export const DataImport: React.FC = () => {
     const [uploading, setUploading] = useState(false);
     const [previewRecords, setPreviewRecords] = useState<any[]>([]);
     const [allEmployees, setAllEmployees] = useState<any[]>([]);
+    const [shifts, setShifts] = useState<any[]>([]);
     const [importErrors, setImportErrors] = useState<any[]>([]);
+
 
     // ── Calendar Modal state ──
     const [isCalendarModalVisible, setIsCalendarModalVisible] = useState(false);
@@ -88,18 +90,29 @@ export const DataImport: React.FC = () => {
         }
     };
 
+    const fetchEmployees = async () => {
+        try {
+            const res = await axios.get(`${API}/employees`);
+            setAllEmployees(res.data);
+        } catch (err) {
+            console.error("Failed to fetch employees", err);
+        }
+    };
+
     useEffect(() => { 
         fetchDbAttendance();
-        const fetchEmployees = async () => {
+        const fetchShifts = async () => {
             try {
-                const res = await axios.get(`${API}/employees`);
-                setAllEmployees(res.data);
+                const res = await axios.get(`${API}/shifts`);
+                setShifts(res.data);
             } catch (err) {
-                console.error("Failed to fetch employees", err);
+                console.error("Failed to fetch shifts", err);
             }
         };
         fetchEmployees();
+        fetchShifts();
     }, [dbMonth]);
+
 
     // ── Normalize date string to YYYY-MM-DD HH:MM:SS for MariaDB ──
     const normalizeDateTime = (dateStr: string, timeStr?: string): string | null => {
@@ -146,8 +159,10 @@ export const DataImport: React.FC = () => {
                             employee_code: String(row[1] || '').trim(),
                             check_in_time: normalizeDateTime(String(row[5] || ''), String(row[6] || '')),
                             check_out_time: normalizeDateTime(String(row[7] || ''), String(row[8] || '')),
-                            csv_status: String(row[9] || '').trim()
+                            csv_status: String(row[9] || '').trim(),
+                            shift_name: String(row[10] || '').trim()
                         }));
+
                     }
                 } else {
                     const text = e.target?.result as string;
@@ -157,8 +172,10 @@ export const DataImport: React.FC = () => {
                         employee_code: String(r.employeeId || '').trim(),
                         check_in_time: normalizeDateTime(r.checkInDate, r.checkInTime),
                         check_out_time: normalizeDateTime(r.checkOutDate, r.checkOutTime),
-                        csv_status: r.status ? String(r.status).trim() : ''
+                        csv_status: r.status ? String(r.status).trim() : '',
+                        shift_name: r.shiftName ? String(r.shiftName).trim() : ''
                     }));
+
                 }
 
                 // Transform to Preview Records with Validation
@@ -187,15 +204,31 @@ export const DataImport: React.FC = () => {
                         isActuallyLate = true;
                         lateMins = parseInt(r.csv_status.replace(/\D/g, '')) || 0;
                     } else if (!r.csv_status || r.csv_status === '' || r.csv_status.includes('ปกติ') || r.csv_status.toLowerCase() === 'on_time') {
-                        // ถ้าไม่มีสถานะมาใน CSV ให้เช็คกับกะประจำ
-                        const shiftStart = empFound && empFound.shift_start_time ? empFound.shift_start_time.substring(0, 5) : null;
+                        // ถ้าลูกค้าเลือกกะมาเอง (shift_name) ให้ใช้เวลากะที่เลือกแทนกะประจำ
+                        const importedShift = r.shift_name ? shifts.find(s => String(s.shiftName).toLowerCase().includes(String(r.shift_name).toLowerCase())) : null;
+                        const shiftStart = importedShift ? importedShift.startTime?.substring(0, 5) : (empFound && empFound.shift_start_time ? empFound.shift_start_time.substring(0, 5) : null);
+                        
                         if (shiftStart !== null) {
-                            isActuallyLate = checkInTimeOnly !== null && checkInTimeOnly > shiftStart;
+                            // คำนวณเบื้องต้น (Backend จะคำนวณละเอียดอีกครั้ง)
+
+                            const allowance = importedShift ? parseInt(importedShift.lateThreshold || 0) : (empFound && empFound.late_allowance_minutes ? parseInt(empFound.late_allowance_minutes) : 0);
+                            
+                            if (checkInTimeOnly) {
+                                const [sh, sm] = shiftStart.split(':').map(Number);
+                                const [ch, cm] = checkInTimeOnly.split(':').map(Number);
+                                let diff = (ch * 60 + cm) - (sh * 60 + sm);
+                                if (diff < -720) diff += 1440;
+                                if (diff > allowance) {
+                                    isActuallyLate = true;
+                                    lateMins = diff - allowance;
+                                }
+                            }
                         } else {
-                            // ถ้าไม่มีสถานะจาก CSV และไม่มีกะประจำ ให้ถือว่าไม่ได้สาย
+                            // ถ้าไม่มีกะใดๆ ให้ถือว่าไม่สาย
                             isActuallyLate = false;
                         }
                     }
+
 
                     let error = '';
                     
@@ -250,8 +283,10 @@ export const DataImport: React.FC = () => {
                 check_in_time: r.check_in_time,
                 check_out_time: r.check_out_time,
                 status: r.status, // ใช้ status ที่เราตรวจเบื้องต้น (late/on_time)
-                late_minutes: r.late_minutes || 0 // ส่งค่านาทีที่ดึงมาจาก CSV
+                late_minutes: r.late_minutes || 0, // ส่งค่านาทีที่ดึงมาจาก CSV
+                shift_name: r.shift_name
             }));
+
 
             const res = await axios.post(`${API}/attendance/import`, { records: recordsToUpload });
             
@@ -273,14 +308,6 @@ export const DataImport: React.FC = () => {
         }
     };
 
-    const fetchEmployees = async () => {
-        try {
-            const res = await axios.get(`${API}/employees`);
-            setAllEmployees(res.data);
-        } catch (err) {
-            console.error("Failed to fetch employees", err);
-        }
-    };
 
     const handleOpenCalendar = (record: DbSummary) => {
         setSelectedEmployeeId(record.employeeId);
@@ -699,7 +726,12 @@ export const DataImport: React.FC = () => {
                                     render: (v) => v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '-',
                                 },
                                 {
+                                    title: 'กะการทำงาน', dataIndex: 'shift_name', key: 'shift_name', width: 120,
+                                    render: (v) => v || <Text type="secondary">-</Text>
+                                },
+                                {
                                     title: 'สาเหตุที่ผิดพลาด', dataIndex: '_error', key: '_error',
+
                                     render: (e) => <Text type="danger">{e}</Text>
                                 },
                             ]}

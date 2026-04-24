@@ -9,7 +9,9 @@ export interface AttendanceRecord {
     checkOutDate: string; // วันที่ออกงาน
     checkOutTime: string; // เวลาออกงาน
     status: string; // สถานะ
+    shiftName: string; // กะ
 }
+
 
 export interface LeaveRecord {
     notifyDate: string; // วันที่แจ้ง
@@ -80,7 +82,9 @@ export function parseAttendanceCSV(csvContent: string): AttendanceRecord[] {
                 checkOutDate: values[7],
                 checkOutTime: values[8],
                 status: values[9],
+                shiftName: values[10] || '',
             });
+
         }
     }
     return records;
