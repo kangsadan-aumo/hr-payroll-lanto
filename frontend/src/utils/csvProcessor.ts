@@ -76,14 +76,15 @@ export function parseAttendanceCSV(csvContent: string): AttendanceRecord[] {
                 employeeId: values[1],
                 name: values[2],
                 department: values[3],
-                branch: values[4],
-                checkInDate: values[5],
-                checkInTime: values[6],
-                checkOutDate: values[7],
-                checkOutTime: values[8],
-                status: values[9],
-                shiftName: values[10] || '',
+                shiftName: values[4],
+                branch: values[5],
+                checkInDate: values[6],
+                checkInTime: values[7],
+                checkOutDate: values[8],
+                checkOutTime: values[9],
+                status: values[10],
             });
+
 
         }
     }

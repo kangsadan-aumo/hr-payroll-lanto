@@ -129,10 +129,14 @@ export const DataImport: React.FC = () => {
                 parts[0] = String(parseInt(parts[0]) - 543);
                 normalized = parts.join('-');
             }
-            const timePart = timeStr && timeStr.trim() !== '' && timeStr !== '-'
-                ? timeStr.trim().length <= 5 ? `${timeStr.trim()}:00` : timeStr.trim()
-                : '00:00:00';
+            let timePart = '00:00:00';
+            const t = (timeStr || '').trim();
+            if (t !== '' && t !== '-') {
+                const actualTime = t.includes(' ') ? t.split(' ').pop() || '' : t;
+                timePart = actualTime.length <= 5 ? `${actualTime}:00` : actualTime;
+            }
             return `${normalized} ${timePart}`;
+
         } catch {
             return null;
         }
@@ -157,11 +161,12 @@ export const DataImport: React.FC = () => {
                         rawRecords = jsonData.slice(1).map((row, i) => ({
                             _rowIndex: i + 2,
                             employee_code: String(row[1] || '').trim(),
-                            check_in_time: normalizeDateTime(String(row[5] || ''), String(row[6] || '')),
-                            check_out_time: normalizeDateTime(String(row[7] || ''), String(row[8] || '')),
-                            csv_status: String(row[9] || '').trim(),
-                            shift_name: String(row[10] || '').trim()
+                            shift_name: String(row[4] || '').trim(),
+                            check_in_time: normalizeDateTime(String(row[6] || ''), String(row[7] || '')),
+                            check_out_time: normalizeDateTime(String(row[8] || ''), String(row[9] || '')),
+                            csv_status: String(row[10] || '').trim(),
                         }));
+
 
                     }
                 } else {
