@@ -27,9 +27,10 @@ interface MainLayoutProps {
     children: React.ReactNode;
     activeMenu: string;
     onMenuClick: (key: string) => void;
+    onLogout?: () => void;
 }
 
-export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, onMenuClick }) => {
+export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, onMenuClick, onLogout }) => {
     const [collapsed, setCollapsed] = useState(false);
 
     const menuItems = [
@@ -54,6 +55,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
             { type: 'divider' },
             { key: 'logout', icon: <LogoutOutlined />, label: 'ออกจากระบบ', danger: true },
         ],
+        onClick: (e) => {
+            if (e.key === 'logout' && onLogout) {
+                onLogout();
+            }
+        }
     };
 
     return (

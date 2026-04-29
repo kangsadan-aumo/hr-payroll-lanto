@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MainLayout } from './MainLayout';
 import { Dashboard } from './Dashboard';
 import { DataImport } from './DataImport';
@@ -13,11 +13,30 @@ import { HRCalendarView } from './HRCalendarView';
 import { AuditLogs } from './AuditLogs';
 import { GovReports } from './GovReports';
 import { Overtime } from './Overtime';
+import { Login } from './Login';
 import './App.css';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeMenu, setActiveMenu] = useState('dashboard');
   const [payrollMonth, setPayrollMonth] = useState<{ month: number; year: number } | null>(null);
+
+  useEffect(() => {
+    const auth = localStorage.getItem('isAuthenticated');
+    if (auth === 'true') {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
+  const handleLogin = () => {
+    setIsAuthenticated(true);
+    localStorage.setItem('isAuthenticated', 'true');
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('isAuthenticated');
+  };
 
   const handleViewPayroll = (month: number, year: number) => {
     setPayrollMonth({ month, year });
@@ -57,8 +76,12 @@ function App() {
     }
   };
 
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   return (
-    <MainLayout activeMenu={activeMenu} onMenuClick={setActiveMenu}>
+    <MainLayout activeMenu={activeMenu} onMenuClick={setActiveMenu} onLogout={handleLogout}>
       {renderContent()}
     </MainLayout>
   );
