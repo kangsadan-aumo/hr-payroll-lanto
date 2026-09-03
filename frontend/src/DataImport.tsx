@@ -838,7 +838,7 @@ export const DataImport: React.FC = () => {
                                     <Button 
                                         size="small" 
                                         icon={<RightOutlined />} 
-                                        onClick={() => setDbMonth(value.add(1, 'month'))}
+                                        onClick={() => setDbDateRange([value.add(1, 'month').startOf('month'), value.add(1, 'month').endOf('month')])}
                                     />
                                 </Space>
                             </div>

@@ -5,7 +5,6 @@ import {
     UserAddOutlined,
     UserDeleteOutlined,
     CheckCircleOutlined,
-    ClockCircleOutlined,
     WarningOutlined,
     SettingOutlined,
     DollarOutlined

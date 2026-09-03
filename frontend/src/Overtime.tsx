@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Row, Col, Card, Statistic, Typography, Table, Tag, Button, Space, Input, DatePicker, Select, Modal, Form, message, Dropdown, InputNumber } from 'antd';
 import {
-    ClockCircleOutlined,
     CheckCircleOutlined,
     CloseCircleOutlined,
     PlusOutlined,
@@ -33,7 +32,7 @@ export const Overtime: React.FC = () => {
     const [employees, setEmployees] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter] = useState('all');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [form] = Form.useForm();
 

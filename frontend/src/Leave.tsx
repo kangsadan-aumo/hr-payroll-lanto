@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Typography, Table, Tag, Button, Space, Input, DatePicker, Select, Modal, Form, Upload, message, Dropdown } from 'antd';
-import type { TableProps, MenuProps } from 'antd';
+import { Row, Col, Card, Statistic, Typography, Table, Tag, Button, Space, Input, DatePicker, Select, Modal, Form, Upload, message } from 'antd';
+import type { TableProps } from 'antd';
 import {
     CalendarOutlined,
     CheckCircleOutlined,
     ClockCircleOutlined,
     CloseCircleOutlined,
     SearchOutlined,
-    FilterOutlined,
     PlusOutlined,
     UploadOutlined,
-    DownloadOutlined,
-    MoreOutlined
+    DownloadOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
@@ -46,7 +44,7 @@ export const Leave: React.FC = () => {
 
     // Filter states
     const [searchText, setSearchText] = useState('');
-    const [statusFilter, setStatusFilter] = useState('all');
+    const [statusFilter] = useState('all');
     const [dateRangeFilter, setDateRangeFilter] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
 
     // Modal states
