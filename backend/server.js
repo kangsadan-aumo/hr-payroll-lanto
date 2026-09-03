@@ -386,6 +386,7 @@ app.delete('/api/positions/:id', async (req, res) => {
         const { id } = req.params;
         await pool.query('DELETE FROM positions WHERE id = ?', [id]);
         res.json({ message: 'Position deleted' });
+    } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
