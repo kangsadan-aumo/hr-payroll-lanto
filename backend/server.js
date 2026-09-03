@@ -2798,6 +2798,8 @@ async function runMigrations() {
     await ensureColumnExists('system_settings', 'diligence_allowance', 'DECIMAL(10,2) DEFAULT 0.00');
     await ensureColumnExists('payroll_records', 'diligence_allowance', 'DECIMAL(10,2) DEFAULT 0.00');
     await ensureColumnExists('payroll_records', 'claims_total', 'DECIMAL(10,2) DEFAULT 0.00');
+    await ensureColumnExists('employees', 'join_date', 'DATE DEFAULT NULL');
+    await ensureColumnExists('employees', 'resign_date', 'DATE DEFAULT NULL');
     await ensureColumnExists('employees', 'probation_end_date', 'DATE DEFAULT NULL');
     await ensureColumnExists('employees', 'contract_end_date', 'DATE DEFAULT NULL');
     await ensureColumnExists('employees', 'notes', 'TEXT DEFAULT NULL');
