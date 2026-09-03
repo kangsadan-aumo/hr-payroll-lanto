@@ -126,8 +126,6 @@ export const Employees: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
     const [departmentsList, setDepartmentsList] = useState<any[]>([]);
-    const [positionsList, setPositionsList] = useState<any[]>([]);
-    const [shiftsList, setShiftsList] = useState<any[]>([]);
     const [searchText, setSearchText] = useState('');
     const [drawerVisible, setDrawerVisible] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -154,21 +152,16 @@ export const Employees: React.FC = () => {
     const [leaveQuotas, setLeaveQuotas] = useState<any[]>([]);
     const [quotaForm] = Form.useForm();
     const [newDeptName, setNewDeptName] = useState('');
-    const [newPositionName, setNewPositionName] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [empRes, depRes, shiftRes, posRes] = await Promise.all([
+            const [empRes, depRes] = await Promise.all([
                 axios.get(`${API}/employees`),
                 axios.get(`${API}/departments`),
-                axios.get(`${API}/shifts`),
-                axios.get(`${API}/positions`),
             ]);
             setEmployees(empRes.data);
             setDepartmentsList(depRes.data);
-            setShiftsList(shiftRes.data);
-            setPositionsList(posRes.data);
         } catch {
             message.error('Failed to fetch data');
         } finally {
@@ -207,33 +200,6 @@ export const Employees: React.FC = () => {
         }
     };
 
-    const handleAddPosition = async (e?: any) => {
-        if (e && e.preventDefault) e.preventDefault();
-        if (!newPositionName.trim()) return;
-        try {
-            const res = await axios.post(`${API}/positions`, { name: newPositionName });
-            const newPos = res.data;
-            setPositionsList(prev => [...prev, newPos]);
-            form.setFieldsValue({ position: newPos.name });
-            setNewPositionName('');
-            message.success('เพิ่มตำแหน่งใหม่เรียบร้อยแล้ว');
-        } catch (error) {
-            message.error('ไม่สามารถเพิ่มตำแหน่งได้');
-        }
-    };
-
-    const handleDeletePosition = async (id: number, name: string) => {
-        try {
-            await axios.delete(`${API}/positions/${id}`);
-            message.success(`ลบตำแหน่ง ${name} เรียบร้อยแล้ว`);
-            setPositionsList(prev => prev.filter(p => p.id !== id));
-            if (form.getFieldValue('position') === name) {
-                form.setFieldsValue({ position: null });
-            }
-        } catch (error) {
-            message.error('ไม่สามารถลบตำแหน่งได้');
-        }
-    };
 
     // ── File Parser (CSV/Excel) ──
     const handleFileParse = (file: File) => {
@@ -545,15 +511,10 @@ export const Employees: React.FC = () => {
             filters: departments.map(d => ({ text: String(d), value: String(d) })),
             onFilter: (value, record) => record.department === value,
         },
-        { title: 'ตำแหน่ง', dataIndex: 'position', key: 'position' },
         {
             title: 'วันที่เริ่มงาน', dataIndex: 'joinDate', key: 'joinDate',
             render: (date: string) => dayjs(date).format('DD MMM YYYY'),
             sorter: (a, b) => dayjs(a.joinDate).unix() - dayjs(b.joinDate).unix()
-        },
-        { 
-            title: 'กะทำงาน', key: 'shift', 
-            render: (_, r) => <Tag color="blue">{r.shift_name || 'ไม่ได้ระบุ'}</Tag>
         },
         {
             title: 'สถานะ', key: 'status',
@@ -870,13 +831,13 @@ export const Employees: React.FC = () => {
                                 <Col span={12}>
                                     <Form.Item 
                                         name="employee_code" 
-                                        label="รหัสพนักงาน (5 หลัก)" 
+                                        label="รหัสพนักงาน" 
                                         rules={[
                                             { required: true, message: 'กรุณากรอกรหัสพนักงาน' },
-                                            { len: 5, message: 'รหัสพนักงานต้องมี 5 หลัก' }
+                                            { max: 15, message: 'รหัสพนักงานต้องไม่เกิน 15 ตัวอักษร' }
                                         ]}
                                     >
-                                        <Input placeholder="เช่น 00001" maxLength={5} />
+                                        <Input placeholder="กรอกรหัสพนักงาน" maxLength={15} />
                                     </Form.Item>
                                 </Col>
                                 <Col span={12}>
@@ -937,57 +898,7 @@ export const Employees: React.FC = () => {
                                         </Select>
                                     </Form.Item>
                                 </Col>
-                                <Col span={12}>
-                                    <Form.Item name="position" label="ตำแหน่ง" rules={[{ required: true, message: 'กรุณาเลือกตำแหน่ง' }]}>
-                                        <Select 
-                                            placeholder="เลือกตำแหน่ง"
-                                            showSearch
-                                            optionFilterProp="children"
-                                            dropdownRender={(menu) => (
-                                                <>
-                                                    {menu}
-                                                    <Divider style={{ margin: '8px 0' }} />
-                                                    <Space style={{ padding: '0 8px 4px' }}>
-                                                        <Input
-                                                            placeholder="เพิ่มตำแหน่งใหม่"
-                                                            value={newPositionName}
-                                                            onChange={(e) => setNewPositionName(e.target.value)}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') handleAddPosition(e);
-                                                            }}
-                                                        />
-                                                        <Button type="text" icon={<PlusOutlined />} onClick={handleAddPosition}>
-                                                            เพิ่ม
-                                                        </Button>
-                                                    </Space>
-                                                </>
-                                            )}
-                                        >
-                                            {positionsList.map(p => (
-                                                <Option key={p.id} value={p.name}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
-                                                        <span style={{ 
-                                                            overflow: 'hidden', 
-                                                            textOverflow: 'ellipsis', 
-                                                            whiteSpace: 'nowrap', 
-                                                            flex: 1 
-                                                        }} title={p.name}>
-                                                            {p.name}
-                                                        </span>
-                                                        <DeleteOutlined 
-                                                            style={{ color: '#ff4d4f', fontSize: '12px', flexShrink: 0 }} 
-                                                            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleDeletePosition(p.id, p.name);
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </Option>
-                                            ))}
-                                        </Select>
-                                    </Form.Item>
-                                </Col>
+
                             </Row>
                             <Row gutter={16}>
                                 <Col span={12}>
@@ -1014,14 +925,7 @@ export const Employees: React.FC = () => {
                                 </Col>
                             </Row>
                             <Row gutter={16}>
-                                <Col span={12}>
-                                    <Form.Item name="shift_id" label="กะการทำงาน (Shift)">
-                                        <Select placeholder="เลือกกะการทำงาน">
-                                            <Option value={null}>-- ไม่กำหนด --</Option>
-                                            {shiftsList.map(s => <Option key={s.id} value={s.id}>{s.shiftName} ({s.startTime}-{s.endTime})</Option>)}
-                                        </Select>
-                                    </Form.Item>
-                                </Col>
+
                                 <Col span={12}>
                                     <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
                                         <Select>
@@ -1111,79 +1015,7 @@ export const Employees: React.FC = () => {
                                 </Col>
                             </Row>
                         </TabPane>
-                        <TabPane tab="ข้อมูลภาษี (Tax)" key="tax">
-                            <Form.Item name="tax_form" label="ประเภทรายงานภาษี" rules={[{ required: true }]}>
-                                <Select>
-                                    <Option value="pnd1">พ.ง.ด. 1 (เงินเดือนพนักงานปกติ)</Option>
-                                    <Option value="pnd3">พ.ง.ด. 3 (จ้างบริการ/บุคคลภายนอก)</Option>
-                                    <Option value="pnd53">พ.ง.ด. 53 (นิติบุคคลข/บริษัท)</Option>
-                                </Select>
-                            </Form.Item>
-                            <Form.Item name="branch_code" label="เลขที่สาขา (Branch Code)">
-                                <Input placeholder="เช่น 00000" maxLength={5} />
-                            </Form.Item>
-                            
-                            {/* Option for PND3/PND53 specifically */}
-                            <Form.Item shouldUpdate={(prev, curr) => prev.tax_form !== curr.tax_form}>
-                                {({ getFieldValue }) => (getFieldValue('tax_form') === 'pnd3' || getFieldValue('tax_form') === 'pnd53') ? (
-                                    <Alert
-                                        message={`การตั้งค่าสำหรับ ${getFieldValue('tax_form').toUpperCase()}`}
-                                        description={
-                                            <Row gutter={16} style={{ marginTop: 12 }}>
-                                                <Col span={12}>
-                                                    <Form.Item name="pnd3_income_type" label="ประเภทเงินได้">
-                                                        <Select>
-                                                            <Option value="40(2)">40(2) จ้างงาน/บริการ</Option>
-                                                            <Option value="40(3)">40(3) ค่าลิขสิทธิ์</Option>
-                                                            <Option value="40(8)">40(8) อื่นๆ</Option>
-                                                            <Option value="ค่าบริการ">ค่าบริการ</Option>
-                                                            <Option value="ค่าเช่า">ค่าเช่า</Option>
-                                                            <Option value="ค่าวิชาชีพอิสระ">ค่าวิชาชีพอิสระ</Option>
-                                                            <Option value="ค่าโฆษณา">ค่าโฆษณา (2%)</Option>
-                                                            <Option value="ค่าขนส่ง">ค่าขนส่ง (1%)</Option>
-                                                        </Select>
-                                                    </Form.Item>
-                                                </Col>
-                                                <Col span={12}>
-                                                    <Form.Item name="pnd3_tax_rate" label="อัตราภาษี (%)">
-                                                        <Select>
-                                                            <Option value={1.00}>1%</Option>
-                                                            <Option value={2.00}>2%</Option>
-                                                            <Option value={3.00}>3%</Option>
-                                                            <Option value={5.00}>5%</Option>
-                                                            <Option value={0.00}>ไม่หัก</Option>
-                                                        </Select>
-                                                    </Form.Item>
-                                                </Col>
-                                            </Row>
-                                        }
-                                        type="info"
-                                        showIcon
-                                    />
-                                ) : null}
-                            </Form.Item>
-                            
-                            <Divider orientation={"left" as any}>ข้อมูลธนาคาร</Divider>
-                            <Row gutter={16}>
-                                <Col span={12}>
-                                    <Form.Item name="bank_name" label="ธนาคาร">
-                                        <Select placeholder="เลือกธนาคาร">
-                                            <Option value="กสิกรไทย">กสิกรไทย (K-Bank)</Option>
-                                            <Option value="ไทยพาณิชย์">ไทยพาณิชย์ (SCB)</Option>
-                                            <Option value="กรุงเทพ">กรุงเทพ (BBL)</Option>
-                                            <Option value="กรุงไทย">กรุงไทย (KTB)</Option>
-                                            <Option value="กรุงศรีอยุธยา">กรุงศรีอยุธยา (BAY)</Option>
-                                            <Option value="ทีทีบี">ทีทีบี (ttb)</Option>
-                                        </Select>
-                                    </Form.Item>
-                                </Col>
-                                <Col span={12}>
-                                    <Form.Item name="bank_account_number" label="เลขที่บัญชี">
-                                        <Input placeholder="เช่น 123-4-56789-0" />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                        </TabPane>
+
                     </Tabs>
                 </Form>
             </Drawer>
