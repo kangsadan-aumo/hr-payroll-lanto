@@ -386,6 +386,37 @@ app.delete('/api/positions/:id', async (req, res) => {
         const { id } = req.params;
         await pool.query('DELETE FROM positions WHERE id = ?', [id]);
         res.json({ message: 'Position deleted' });
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ─────────────────────────────────────────────
+// EMPLOYEE TYPES
+// ─────────────────────────────────────────────
+app.get('/api/employee-types', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM employee_types ORDER BY id ASC');
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/employee-types', async (req, res) => {
+    try {
+        const { name } = req.body;
+        const [result] = await pool.query('INSERT INTO employee_types (name) VALUES (?)', [name]);
+        res.status(201).json({ id: result.insertId, name });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/employee-types/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM employee_types WHERE id = ?', [id]);
+        res.json({ message: 'Employee type deleted' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -402,10 +433,11 @@ app.delete('/api/positions/:id', async (req, res) => {
 app.get('/api/employees', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT e.*, d.name as department_name, s.name as shift_name, s.start_time as shift_start_time
+            SELECT e.*, d.name as department_name, s.name as shift_name, s.start_time as shift_start_time, et.name as employee_type_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN shifts s ON e.shift_id = s.id
+            LEFT JOIN employee_types et ON e.employee_type_id = et.id
             ORDER BY e.id DESC
         `);
         const formatted = rows.map(r => ({
@@ -417,6 +449,8 @@ app.get('/api/employees', async (req, res) => {
             middle_name: r.middle_name || '',
             name: `${r.title || ''} ${r.first_name} ${r.last_name}`.trim(),
             department: r.department_name || 'ไม่ระบุ',
+            employee_type_name: r.employee_type_name || 'ไม่ระบุ',
+            employee_type_id: r.employee_type_id,
             position: r.position || '-',
             joinDate: r.join_date,
             status: r.status,
@@ -459,19 +493,19 @@ app.get('/api/employees', async (req, res) => {
 app.post('/api/employees', async (req, res) => {
     try {
         const { 
-            employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
+            employee_code, title, first_name, middle_name, last_name, department_id, employee_type_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
             tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
             pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
         } = req.body;
         const code = employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
         const [result] = await pool.query(
             `INSERT INTO employees (
-                employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
+                employee_code, title, first_name, middle_name, last_name, department_id, employee_type_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
                 tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
                 pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                code, title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, resign_date || null, status || 'active', base_salary || 0, phone || null, email || null, id_number || null,
+                code, title || 'นาย', first_name, middle_name || null, last_name, department_id, employee_type_id || null, shift_id || null, position, join_date, resign_date || null, status || 'active', base_salary || 0, phone || null, email || null, id_number || null,
                 tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
                 pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, bank_name || null, bank_account_number || null
             ]
@@ -486,18 +520,18 @@ app.put('/api/employees/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { 
-            title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
+            title, first_name, middle_name, last_name, department_id, employee_type_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
             tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
             pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
         } = req.body;
         const [result] = await pool.query(
             `UPDATE employees SET 
-                title=?, first_name=?, middle_name=?, last_name=?, department_id=?, shift_id=?, position=?, join_date=?, resign_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?,
+                title=?, first_name=?, middle_name=?, last_name=?, department_id=?, employee_type_id=?, shift_id=?, position=?, join_date=?, resign_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?,
                 tax_form=?, branch_code=?, address_building=?, address_room=?, address_floor=?, address_village=?, address_no=?, address_moo=?, address_soi=?, address_yaek=?, address_road=?, address_subdistrict=?, address_district=?, address_province=?, address_zipcode=?,
                 pnd3_income_type=?, pnd3_tax_rate=?, bank_name=?, bank_account_number=?, updated_at=CURRENT_TIMESTAMP 
              WHERE id=?`,
             [
-                title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, resign_date || null, status, base_salary, phone || null, email || null, id_number || null,
+                title || 'นาย', first_name, middle_name || null, last_name, department_id, employee_type_id || null, shift_id || null, position, join_date, resign_date || null, status, base_salary, phone || null, email || null, id_number || null,
                 tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
                 pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, bank_name || null, bank_account_number || null, id
             ]
@@ -2555,6 +2589,11 @@ async function runMigrations() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS employee_types (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `CREATE TABLE IF NOT EXISTS employees (
             id INT AUTO_INCREMENT PRIMARY KEY,
             employee_code VARCHAR(50) UNIQUE NOT NULL,
@@ -2563,6 +2602,7 @@ async function runMigrations() {
             middle_name VARCHAR(100) DEFAULT NULL,
             last_name VARCHAR(100) NOT NULL,
             department_id INT,
+            employee_type_id INT,
             shift_id INT,
             position VARCHAR(100),
             base_salary DECIMAL(10, 2) DEFAULT 0.00,
@@ -2588,6 +2628,7 @@ async function runMigrations() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+            FOREIGN KEY (employee_type_id) REFERENCES employee_types(id) ON DELETE SET NULL,
             FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `CREATE TABLE IF NOT EXISTS attendance_logs (

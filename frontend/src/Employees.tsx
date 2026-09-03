@@ -28,10 +28,11 @@ interface Employee {
     employee_code: string;
     title: string;
     first_name: string;
-    middle_name: string;
     last_name: string;
     name: string;
     department: string;
+    employee_type_id?: number;
+    employee_type_name?: string;
     position: string;
     joinDate: string;
     status: 'active' | 'inactive';
@@ -75,7 +76,7 @@ interface CsvRow {
     join_date: string;
     status: string;
     base_salary: string;
-    id_number: string;
+    notes?: string;
     bank_name?: string;
     bank_account_number?: string;
     _valid: boolean;
@@ -88,7 +89,6 @@ const CSV_HEADER_MAP: Record<string, string> = {
     'รหัส': 'employee_code',      // Alias
     'คำนำหน้า': 'title',
     'ชื่อ': 'first_name',
-    'ชื่อกลาง': 'middle_name',
     'นามสกุล': 'last_name',
     'สกุล': 'last_name',          // Alias
     'แผนก': 'department',
@@ -112,8 +112,6 @@ const CSV_HEADER_MAP: Record<string, string> = {
     'join_date': 'join_date',
     'status': 'status',
     'base_salary': 'base_salary',
-    'เลขบัตรประชาชน': 'id_number',
-    'id_number': 'id_number',
     'ธนาคาร': 'bank_name',
     'เลขที่บัญชี': 'bank_account_number',
 };
@@ -126,6 +124,7 @@ export const Employees: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
     const [departmentsList, setDepartmentsList] = useState<any[]>([]);
+    const [employeeTypesList, setEmployeeTypesList] = useState<any[]>([]);
     const [searchText, setSearchText] = useState('');
     const [drawerVisible, setDrawerVisible] = useState(false);
     const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -152,16 +151,19 @@ export const Employees: React.FC = () => {
     const [leaveQuotas, setLeaveQuotas] = useState<any[]>([]);
     const [quotaForm] = Form.useForm();
     const [newDeptName, setNewDeptName] = useState('');
+    const [newEmployeeTypeName, setNewEmployeeTypeName] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [empRes, depRes] = await Promise.all([
+            const [empRes, depRes, typeRes] = await Promise.all([
                 axios.get(`${API}/employees`),
                 axios.get(`${API}/departments`),
+                axios.get(`${API}/employee-types`),
             ]);
             setEmployees(empRes.data);
             setDepartmentsList(depRes.data);
+            setEmployeeTypesList(typeRes.data);
         } catch {
             message.error('Failed to fetch data');
         } finally {
@@ -191,12 +193,39 @@ export const Employees: React.FC = () => {
             await axios.delete(`${API}/departments/${id}`);
             message.success(`ลบแผนก ${name} เรียบร้อยแล้ว`);
             setDepartmentsList(prev => prev.filter(d => d.id !== id));
-            // If the deleted dept is currently selected in the form, reset it
             if (form.getFieldValue('department_id') === id) {
                 form.setFieldsValue({ department_id: null });
             }
         } catch (error) {
             message.error('ไม่สามารถลบแผนกได้ (อาจมีการใช้ข้อมูลนี้อยู่ในระบบ)');
+        }
+    };
+
+    const handleAddEmployeeType = async (e?: any) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!newEmployeeTypeName.trim()) return;
+        try {
+            const res = await axios.post(`${API}/employee-types`, { name: newEmployeeTypeName });
+            const newType = res.data;
+            setEmployeeTypesList(prev => [...prev, newType]);
+            form.setFieldsValue({ employee_type_id: newType.id });
+            setNewEmployeeTypeName('');
+            message.success('เพิ่มประเภทพนักงานใหม่เรียบร้อยแล้ว');
+        } catch (error) {
+            message.error('ไม่สามารถเพิ่มประเภทพนักงานได้');
+        }
+    };
+
+    const handleDeleteEmployeeType = async (id: number, name: string) => {
+        try {
+            await axios.delete(`${API}/employee-types/${id}`);
+            message.success(`ลบประเภทพนักงาน ${name} เรียบร้อยแล้ว`);
+            setEmployeeTypesList(prev => prev.filter(t => t.id !== id));
+            if (form.getFieldValue('employee_type_id') === id) {
+                form.setFieldsValue({ employee_type_id: null });
+            }
+        } catch (error) {
+            message.error('ไม่สามารถลบประเภทพนักงานได้ (อาจมีการใช้ข้อมูลนี้อยู่ในระบบ)');
         }
     };
 
@@ -294,7 +323,6 @@ export const Employees: React.FC = () => {
             'วันที่เริ่มงาน': e.joinDate,
             'สถานะ': e.status === 'active' ? 'ใช้งาน' : 'ลาออก',
             'เงินเดือน': e.baseSalary,
-            'เลขบัตรประชาชน': e.id_number,
             'ธนาคาร': e.bank_name,
             'เลขที่บัญชี': e.bank_account_number
         }));
@@ -325,7 +353,6 @@ export const Employees: React.FC = () => {
                 join_date: r.join_date ? dayjs(r.join_date).format('YYYY-MM-DD') : null,
                 status: r.status || 'active',
                 base_salary: parseFloat(r.base_salary) || 0,
-                id_number: r.id_number || null,
                 bank_name: r.bank_name || null,
                 bank_account_number: r.bank_account_number || null,
             }));
@@ -370,8 +397,9 @@ export const Employees: React.FC = () => {
             setEditingEmployee(record);
             const dep = departmentsList.find(d => d.name === record.department);
             form.setFieldsValue({ 
-                ...record, 
+                ...record,
                 department_id: dep ? dep.id : null, 
+                employee_type_id: record.employee_type_id,
                 shift_id: record.shift_id,
                 joinDate: record.joinDate ? dayjs(record.joinDate) : null,
                 resignDate: (record as any).resign_date ? dayjs((record as any).resign_date) : null
@@ -390,9 +418,9 @@ export const Employees: React.FC = () => {
             ...values,
             join_date: values.joinDate ? values.joinDate.format('YYYY-MM-DD') : null,
             resign_date: (values.status === 'inactive' && values.resignDate) ? values.resignDate.format('YYYY-MM-DD') : null,
+            employee_type_id: values.employee_type_id || null,
             shift_id: values.shift_id || null,
             base_salary: values.baseSalary || 0,
-            id_number: values.id_number || null,
             bank_name: values.bank_name || null,
             bank_account_number: values.bank_account_number || null,
         };
@@ -801,7 +829,7 @@ export const Employees: React.FC = () => {
                     <Tabs defaultActiveKey="basic">
                         <TabPane tab="ข้อมูลทั่วไป" key="basic">
                             <Row gutter={16}>
-                                <Col span={6}>
+                                <Col span={4}>
                                     <Form.Item name="title" label="คำนำหน้า" rules={[{ required: true }]}>
                                         <Select>
                                             <Option value="นาย">นาย</Option>
@@ -811,26 +839,19 @@ export const Employees: React.FC = () => {
                                         </Select>
                                     </Form.Item>
                                 </Col>
-                                <Col span={18}>
+                                <Col span={10}>
                                     <Form.Item name="first_name" label="ชื่อ" rules={[{ required: true, message: 'กรุณากรอกชื่อ' }]}>
                                         <Input placeholder="เช่น สมชาย" />
                                     </Form.Item>
                                 </Col>
-                            </Row>
-                            <Row gutter={16}>
-                                <Col span={12}>
-                                    <Form.Item name="middle_name" label="ชื่อกลาง">
-                                        <Input placeholder="(ถ้ามี)" />
-                                    </Form.Item>
-                                </Col>
-                                <Col span={12}>
+                                <Col span={10}>
                                     <Form.Item name="last_name" label="นามสกุล" rules={[{ required: true, message: 'กรุณากรอกนามสกุล' }]}>
                                         <Input placeholder="เช่น ใจกล้า" />
                                     </Form.Item>
                                 </Col>
                             </Row>
                             <Row gutter={16}>
-                                <Col span={12}>
+                                <Col span={8}>
                                     <Form.Item 
                                         name="employee_code" 
                                         label="รหัสพนักงาน" 
@@ -842,7 +863,7 @@ export const Employees: React.FC = () => {
                                         <Input placeholder="กรอกรหัสพนักงาน" maxLength={15} />
                                     </Form.Item>
                                 </Col>
-                                <Col span={12}>
+                                <Col span={8}>
                                     <Form.Item name="department_id" label="แผนก" rules={[{ required: true, message: 'กรุณาเลือกแผนก' }]}>
                                         <Select 
                                             placeholder="เลือกแผนก"
@@ -885,6 +906,57 @@ export const Employees: React.FC = () => {
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleDeleteDepartment(d.id, d.name);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </Option>
+                                            ))}
+                                        </Select>
+                                    </Form.Item>
+                                </Col>
+                                <Col span={8}>
+                                    <Form.Item name="employee_type_id" label="ประเภทพนักงาน" rules={[{ required: true, message: 'กรุณาเลือกประเภทพนักงาน' }]}>
+                                        <Select 
+                                            placeholder="เลือกประเภทพนักงาน"
+                                            showSearch
+                                            optionFilterProp="children"
+                                            dropdownRender={(menu) => (
+                                                <>
+                                                    {menu}
+                                                    <Divider style={{ margin: '8px 0' }} />
+                                                    <Space style={{ padding: '0 8px 4px' }}>
+                                                        <Input
+                                                            placeholder="เพิ่มประเภทใหม่"
+                                                            value={newEmployeeTypeName}
+                                                            onChange={(e) => setNewEmployeeTypeName(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') handleAddEmployeeType(e);
+                                                            }}
+                                                        />
+                                                        <Button type="text" icon={<PlusOutlined />} onClick={handleAddEmployeeType}>
+                                                            เพิ่ม
+                                                        </Button>
+                                                    </Space>
+                                                </>
+                                            )}
+                                        >
+                                            {employeeTypesList.map(t => (
+                                                <Option key={t.id} value={t.id}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '8px' }}>
+                                                        <span style={{ 
+                                                            overflow: 'hidden', 
+                                                            textOverflow: 'ellipsis', 
+                                                            whiteSpace: 'nowrap', 
+                                                            flex: 1 
+                                                        }} title={t.name}>
+                                                            {t.name}
+                                                        </span>
+                                                        <DeleteOutlined 
+                                                            style={{ color: '#ff4d4f', fontSize: '12px', flexShrink: 0 }} 
+                                                            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleDeleteEmployeeType(t.id, t.name);
                                                             }}
                                                         />
                                                     </div>
@@ -938,14 +1010,6 @@ export const Employees: React.FC = () => {
                                         <Input type="number" placeholder="เช่น 25000" prefix="฿" />
                                     </Form.Item>
                                 </Col>
-                                <Col span={12}>
-                                    <Form.Item name="id_number" label="เลขประจำตัวประชาชน (13 หลัก)" rules={[{ len: 13, message: 'เลขบัตรประชาชนต้องมี 13 หลัก' }]}>
-                                        <Input placeholder="1xxxxxxxxxxxx" maxLength={13} />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                            <Row gutter={16}>
-
                                 <Col span={12}>
                                     <Form.Item name="status" label="สถานะการทำงาน" rules={[{ required: true }]}>
                                         <Select>
