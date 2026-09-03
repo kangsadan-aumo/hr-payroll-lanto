@@ -72,8 +72,14 @@ export const DataImport: React.FC = () => {
     const fetchDbAttendance = async () => {
         setDbLoading(true);
         try {
-            const startDate = dbDateRange[0] ? dbDateRange[0].format('YYYY-MM-DD') : undefined;
-            const endDate = dbDateRange[1] ? dbDateRange[1].format('YYYY-MM-DD') : undefined;
+            let startDate, endDate;
+            if (viewMode === 'monthly') {
+                startDate = dbDateRange[0] ? dbDateRange[0].format('YYYY-MM-DD') : undefined;
+                endDate = dbDateRange[1] ? dbDateRange[1].format('YYYY-MM-DD') : undefined;
+            } else {
+                startDate = dbDay ? dbDay.format('YYYY-MM-DD') : undefined;
+                endDate = dbDay ? dbDay.format('YYYY-MM-DD') : undefined;
+            }
             const [res, leaveRes, holidaysRes] = await Promise.all([
                 axios.get(`${API}/attendance`, { params: { startDate, endDate } }),
                 axios.get(`${API}/leaves/requests`),
@@ -111,7 +117,7 @@ export const DataImport: React.FC = () => {
         };
         fetchEmployees();
         fetchShifts();
-    }, [dbDateRange]);
+    }, [dbDateRange, dbDay, viewMode]);
 
 
     // ── Normalize date string to YYYY-MM-DD HH:MM:SS for MariaDB ──
@@ -476,10 +482,11 @@ export const DataImport: React.FC = () => {
     const filteredDbLogs = useMemo(() => {
         if (viewMode === 'monthly') return [];
         return dbLogs.filter(log => {
-            const matchSearch = log.employee_name?.toLowerCase().includes(dbSearch.toLowerCase()) ||
-                               log.employee_code?.toLowerCase().includes(dbSearch.toLowerCase());
-            const matchDay = dbDay ? dayjs(log.check_in_time).isSame(dbDay, 'day') : true;
-            return matchSearch && matchDay;
+            const search = String(dbSearch || '').toLowerCase();
+            const empName = String(log.emp_name || '').toLowerCase();
+            const empCode = String(log.employee_code || '').toLowerCase();
+            // ในโหมด daily เราดึงข้อมูลมาเฉพาะวันที่เลือกแล้ว ดังนั้นไม่ต้องกรองวันซ้ำ (ป้องกันบั๊ก Timezone)
+            return empName.includes(search) || empCode.includes(search);
         });
     }, [dbLogs, dbSearch, dbDay, viewMode]);
 
@@ -562,7 +569,7 @@ export const DataImport: React.FC = () => {
 
     const dailyColumns = [
         { title: 'รหัสพนักงาน', dataIndex: 'employee_code', key: 'employee_code', width: 110 },
-        { title: 'ชื่อ-นามสกุล', dataIndex: 'employee_name', key: 'employee_name' },
+        { title: 'ชื่อ-นามสกุล', dataIndex: 'emp_name', key: 'emp_name' },
         { title: 'แผนก', dataIndex: 'department', key: 'department' },
         { title: 'เวลาเข้า', dataIndex: 'check_in_time', key: 'check_in_time', render: (v: string) => v ? dayjs(v).format('HH:mm') : '-' },
         { title: 'เวลาออก', dataIndex: 'check_out_time', key: 'check_out_time', render: (v: string) => v ? dayjs(v).format('HH:mm') : '-' },
