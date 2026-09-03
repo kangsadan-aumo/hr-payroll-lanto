@@ -1587,7 +1587,7 @@ app.get('/api/attendance', async (req, res) => {
         let whereClause = '';
         const params = [];
         if (startDate && endDate) {
-            whereClause = `WHERE al.check_in_time >= ? AND al.check_in_time <= ?`;
+            whereClause = `WHERE COALESCE(al.check_in_time, al.check_out_time) >= ? AND COALESCE(al.check_in_time, al.check_out_time) <= ?`;
             params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
         }
 
@@ -1604,7 +1604,7 @@ app.get('/api/attendance', async (req, res) => {
             LEFT JOIN shifts s ON al.shift_id = s.id
             LEFT JOIN shifts es ON e.shift_id = es.id
             ${whereClause}
-            ORDER BY al.check_in_time DESC
+            ORDER BY COALESCE(al.check_in_time, al.check_out_time) DESC
         `, params);
 
 
