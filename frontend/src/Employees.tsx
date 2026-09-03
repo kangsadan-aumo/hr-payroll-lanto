@@ -9,7 +9,7 @@ import {
     SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined,
     CheckCircleOutlined, CloseCircleOutlined, ImportOutlined,
     DownloadOutlined, WarningOutlined, FileTextOutlined, ProfileOutlined,
-    SecurityScanOutlined, UploadOutlined, FileExcelOutlined
+    SecurityScanOutlined, UploadOutlined, FileExcelOutlined, EyeOutlined
 } from '@ant-design/icons';
 const { TextArea } = Input;
 const { Option } = Select;
@@ -139,6 +139,7 @@ export const Employees: React.FC = () => {
     // HR Admin States
     const [adminDrawerVisible, setAdminDrawerVisible] = useState(false);
     const [selectedEmployeeForAdmin, setSelectedEmployeeForAdmin] = useState<Employee | null>(null);
+    const [docCategory, setDocCategory] = useState<string>('เอกสารสำคัญ');
     const [documents, setDocuments] = useState<any[]>([]);
     const [disciplinaryRecords, setDisciplinaryRecords] = useState<any[]>([]);
     const [adminLoading, setAdminLoading] = useState(false);
@@ -627,7 +628,7 @@ export const Employees: React.FC = () => {
         const { file } = options;
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('category', 'เอกสารสำคัญ');
+        formData.append('category', docCategory || 'เอกสารทั่วไป');
         try {
             await axios.post(`${API}/employees/${selectedEmployeeForAdmin?.id}/documents`, formData);
             message.success('อัปโหลดไฟล์สำเร็จ');
@@ -1136,9 +1137,24 @@ export const Employees: React.FC = () => {
 
                     <TabPane tab="เอกสารพนักงาน" key="2">
                         <Space direction="vertical" style={{ width: '100%' }}>
-                            <Upload customRequest={handleUpload} showUploadList={false}>
-                                <Button icon={<UploadOutlined />} type="dashed" block>คลิกเพื่ออัปโหลดเอกสาร (Scan ID, ทะเบียนบ้าน ฯลฯ)</Button>
-                            </Upload>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <Select
+                                    mode="tags"
+                                    maxCount={1}
+                                    style={{ width: 250 }}
+                                    placeholder="พิมพ์หรือเลือกหมวดหมู่เอกสาร"
+                                    value={docCategory ? [docCategory] : []}
+                                    onChange={(val) => setDocCategory(val.length > 0 ? val[val.length - 1] : '')}
+                                    options={[
+                                        { value: 'เอกสารสำคัญ', label: 'เอกสารสำคัญ' },
+                                        { value: 'ประวัติการศึกษา', label: 'ประวัติการศึกษา' },
+                                        { value: 'สัญญาจ้าง', label: 'สัญญาจ้าง' },
+                                    ]}
+                                />
+                                <Upload customRequest={handleUpload} showUploadList={false}>
+                                    <Button icon={<UploadOutlined />} type="dashed">คลิกเพื่ออัปโหลดเอกสาร (Scan ID, ทะเบียนบ้าน ฯลฯ)</Button>
+                                </Upload>
+                            </div>
                             <Table
                                 dataSource={documents}
                                 pagination={false}
@@ -1149,7 +1165,8 @@ export const Employees: React.FC = () => {
                                         title: 'จัดการ', key: 'op', 
                                         render: (_, r) => (
                                             <Space>
-                                                <Button size="small" icon={<DownloadOutlined />} href={`${UPLOAD_URL}/${r.file_path}`} target="_blank" />
+                                                <Button size="small" icon={<EyeOutlined />} onClick={() => window.open(`${UPLOAD_URL}/${r.file_path}`, '_blank')} />
+                                                <Button size="small" icon={<DownloadOutlined />} href={`${UPLOAD_URL}/${r.file_path}`} target="_blank" download />
                                                 <Popconfirm title="ลบเอกสารนี้?" onConfirm={() => handleDeleteDoc(r.id)}>
                                                     <Button size="small" danger icon={<DeleteOutlined />} />
                                                 </Popconfirm>

@@ -44,7 +44,9 @@ const storage = multer.diskStorage({
     },
     filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + '-' + file.originalname);
+        // Fix for non-ASCII characters (Thai language) in multer
+        const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+        cb(null, uniqueSuffix + '-' + originalName);
     }
 });
 const upload = multer({ storage });
