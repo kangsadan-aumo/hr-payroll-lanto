@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Row, Col, Card, Upload, Statistic, Typography, Table, Space, Tag, Input,
-    message, Button, DatePicker, Modal, Calendar, Badge, Tooltip, Alert, Select
+    message, Button, DatePicker, Modal, Calendar, Badge, Tooltip, Alert, Select,
+    Form, TimePicker
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
     InboxOutlined, UserOutlined, ClockCircleOutlined,
     SearchOutlined, DatabaseOutlined, SyncOutlined,
     CheckCircleOutlined, CalendarOutlined, FileExcelOutlined,
-    LeftOutlined, RightOutlined, WarningOutlined, DeleteOutlined, DownloadOutlined
+    LeftOutlined, RightOutlined, WarningOutlined, DeleteOutlined, DownloadOutlined,
+    PlusOutlined
 } from '@ant-design/icons';
 import { parseAttendanceCSV } from './utils/csvProcessor';
 import dayjs, { Dayjs } from 'dayjs';
@@ -46,6 +48,11 @@ export const DataImport: React.FC = () => {
     const [dbDay, setDbDay] = useState<dayjs.Dayjs | null>(dayjs());
     const [viewMode, setViewMode] = useState<'monthly' | 'daily'>('monthly');
     const [dbSearch, setDbSearch] = useState('');
+
+    // ── Manual Entry state ──
+    const [isManualModalVisible, setIsManualModalVisible] = useState(false);
+    const [manualForm] = Form.useForm();
+    const [manualSubmitting, setManualSubmitting] = useState(false);
 
     // ── Upload Modal state ──
     const [isUploadModalVisible, setIsUploadModalVisible] = useState(false);
@@ -307,6 +314,39 @@ export const DataImport: React.FC = () => {
             reader.readAsText(file, 'UTF-8');
         }
         return false;
+    };
+
+    const handleManualSubmit = async (values: any) => {
+        try {
+            setManualSubmitting(true);
+            const recordDate = values.record_date.format('YYYY-MM-DD');
+            const checkIn = values.check_in_time ? `${recordDate} ${values.check_in_time.format('HH:mm')}:00` : null;
+            const checkOut = values.check_out_time ? `${recordDate} ${values.check_out_time.format('HH:mm')}:00` : null;
+            
+            if (!checkIn && !checkOut) {
+                message.error('กรุณาระบุเวลาเข้า หรือ เวลาออก อย่างน้อย 1 อย่าง');
+                setManualSubmitting(false);
+                return;
+            }
+
+            const payload = [{
+                employee_code: values.employee_code,
+                check_in_time: checkIn,
+                check_out_time: checkOut,
+                status: 'on_time', // Backend will recalculate
+                late_minutes: 0
+            }];
+
+            await axios.post(`${API}/attendance/import`, { records: payload });
+            message.success('บันทึกข้อมูลสำเร็จ');
+            setIsManualModalVisible(false);
+            manualForm.resetFields();
+            fetchDbAttendance();
+        } catch (err: any) {
+            message.error(err?.response?.data?.error || 'บันทึกข้อมูลไม่สำเร็จ');
+        } finally {
+            setManualSubmitting(false);
+        }
     };
 
     // ── Final Confirm Import (Step 2: Actual Save) ──
@@ -595,6 +635,17 @@ export const DataImport: React.FC = () => {
                 </div>
                 <Space>
                     <Button 
+                        icon={<PlusOutlined />} 
+                        onClick={() => {
+                            manualForm.resetFields();
+                            fetchEmployees();
+                            setIsManualModalVisible(true);
+                        }}
+                        size="large"
+                    >
+                        บันทึกเข้า-ออกงาน (Manual)
+                    </Button>
+                    <Button 
                         type="primary" 
                         icon={<FileExcelOutlined />} 
                         onClick={() => { 
@@ -862,6 +913,54 @@ export const DataImport: React.FC = () => {
                     />
                 </div>
             </Modal>
+            {/* ── MANUAL ENTRY MODAL ── */}
+            <Modal
+                title="บันทึกข้อมูลเข้า-ออกงาน (Manual)"
+                open={isManualModalVisible}
+                onCancel={() => !manualSubmitting && setIsManualModalVisible(false)}
+                footer={null}
+            >
+                <Form
+                    form={manualForm}
+                    layout="vertical"
+                    onFinish={handleManualSubmit}
+                >
+                    <Form.Item name="employee_code" label="พนักงาน" rules={[{ required: true, message: 'กรุณาเลือกพนักงาน' }]}>
+                        <Select 
+                            showSearch 
+                            placeholder="ค้นหาพนักงาน" 
+                            optionFilterProp="children"
+                        >
+                            {allEmployees.map(emp => (
+                                <Option key={emp.employee_code} value={emp.employee_code}>
+                                    {emp.employee_code} - {emp.name}
+                                </Option>
+                            ))}
+                        </Select>
+                    </Form.Item>
+                    <Form.Item name="record_date" label="วันที่" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
+                        <DatePicker style={{ width: '100%' }} />
+                    </Form.Item>
+                    <Row gutter={16}>
+                        <Col span={12}>
+                            <Form.Item name="check_in_time" label="เวลาเข้างาน">
+                                <TimePicker format="HH:mm" style={{ width: '100%' }} />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item name="check_out_time" label="เวลาออกงาน">
+                                <TimePicker format="HH:mm" style={{ width: '100%' }} />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+                    <Form.Item style={{ marginBottom: 0 }}>
+                        <Button type="primary" htmlType="submit" loading={manualSubmitting} block>
+                            บันทึกข้อมูล
+                        </Button>
+                    </Form.Item>
+                </Form>
+            </Modal>
+
         </div>
     );
 };

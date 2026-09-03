@@ -1737,8 +1737,9 @@ app.post('/api/attendance/import', async (req, res) => {
         let maxDateStr = null;
 
         for (const rec of records) {
-            if (rec.check_in_time) {
-                const datePart = rec.check_in_time.substring(0, 10);
+            const timeStr = rec.check_in_time || rec.check_out_time;
+            if (timeStr) {
+                const datePart = timeStr.substring(0, 10);
                 if (!minDateStr || datePart < minDateStr) minDateStr = datePart;
                 if (!maxDateStr || datePart > maxDateStr) maxDateStr = datePart;
             }
@@ -1776,7 +1777,7 @@ app.post('/api/attendance/import', async (req, res) => {
                 }
 
                 const employeeId = empData.id;
-                const checkInDatetime = rec.check_in_time || null;
+                const checkInDatetime = rec.check_in_time || rec.check_out_time || null;
                 const checkDate = checkInDatetime ? checkInDatetime.substring(0, 10) : null;
 
                 let existingId = null;
