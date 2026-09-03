@@ -934,50 +934,6 @@ app.delete('/api/overtime/requests/:id', async (req, res) => {
         res.json({ message: 'Deleted' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
-
-// ─────────────────────────────────────────────
-// SHIFTS
-// ─────────────────────────────────────────────
-app.get('/api/shifts', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM shifts ORDER BY id ASC');
-        const formatted = rows.map(r => ({
-            id: r.id.toString(), shiftName: r.name, startTime: r.start_time,
-            endTime: r.end_time, lateThreshold: r.late_allowance_minutes, color: r.color || 'blue'
-        }));
-        res.json(formatted);
-    } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
-app.post('/api/shifts', async (req, res) => {
-    try {
-        const { shiftName, startTime, endTime, lateThreshold, color } = req.body;
-        const [result] = await pool.query(
-            'INSERT INTO shifts (name, start_time, end_time, late_allowance_minutes, color) VALUES (?, ?, ?, ?, ?)',
-            [shiftName, startTime, endTime, lateThreshold, color]
-        );
-        res.status(201).json({ id: result.insertId.toString() });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
-app.put('/api/shifts/:id', async (req, res) => {
-    try {
-        const { shiftName, startTime, endTime, lateThreshold, color } = req.body;
-        await pool.query(
-            'UPDATE shifts SET name=?, start_time=?, end_time=?, late_allowance_minutes=?, color=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
-            [shiftName, startTime, endTime, lateThreshold, color, req.params.id]
-        );
-        res.json({ message: 'Updated' });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
-app.delete('/api/shifts/:id', async (req, res) => {
-    try {
-        await pool.query('DELETE FROM shifts WHERE id=?', [req.params.id]);
-        res.json({ message: 'Deleted' });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
 // ─────────────────────────────────────────────
 // LEAVE QUOTA RULES
 // ─────────────────────────────────────────────
@@ -1723,9 +1679,8 @@ app.post('/api/attendance/import', async (req, res) => {
 
         // 1. Pre-fetch employees to save queries
         const [empRows] = await pool.query(`
-            SELECT e.id, e.employee_code, e.shift_id, s.start_time, s.late_allowance_minutes
+            SELECT e.id, e.employee_code
             FROM employees e
-            LEFT JOIN shifts s ON e.shift_id = s.id
         `);
         const empMap = new Map();
         for (const e of empRows) {
@@ -1758,12 +1713,6 @@ app.post('/api/attendance/import', async (req, res) => {
             });
         }
 
-        const [allShifts] = await pool.query('SELECT id, name, start_time, late_allowance_minutes FROM shifts');
-        const shiftMap = new Map();
-        allShifts.forEach(s => {
-            shiftMap.set(String(s.name).trim().toLowerCase(), s);
-        });
-
         const insertData = [];
 
         const updateData = [];
@@ -1785,44 +1734,10 @@ app.post('/api/attendance/import', async (req, res) => {
                     existingId = existingMap.get(`${employeeId}_${checkDate}`);
                 }
 
-                let shiftId = null;
-                let actualShift = null;
-
-                // 1. Check if record has a specific shift name
-                if (rec.shift_name) {
-                    const matchedShift = shiftMap.get(String(rec.shift_name).trim().toLowerCase());
-                    if (matchedShift) {
-                        shiftId = matchedShift.id;
-                        actualShift = matchedShift;
-                    }
-                }
-
-                if (empData.start_time && checkInDatetime && !actualShift) {
-                    actualShift = {
-                        start_time: empData.start_time,
-                        late_allowance_minutes: empData.late_allowance_minutes
-                    };
-                }
-
-                if (actualShift && checkInDatetime) {
-                    const shiftStart = actualShift.start_time;
-                    const allowance = parseInt(actualShift.late_allowance_minutes || 0);
-                    const checkInTime = checkInDatetime.substring(11, 19) || checkInDatetime.substring(11);
-
-                    if (checkInTime) {
-                        const [sh, sm] = shiftStart.split(':').map(Number);
-                        const [ch, cm] = checkInTime.split(':').map(Number);
-                        let diff = (ch * 60 + cm) - (sh * 60 + sm);
-                        if (diff < -720) diff += 1440; 
-                        if (diff > allowance) {
-                            lateMinutes = diff - allowance;
-                            attendanceStatus = 'late';
-                        } else {
-                            lateMinutes = 0;
-                            attendanceStatus = 'on_time';
-                        }
-                    }
-                } else if (rec.status) {
+                let attendanceStatus = 'on_time';
+                let lateMinutes = 0;
+                
+                if (rec.status) {
                     if (rec.status.includes('สาย') || rec.status === 'late') {
                         attendanceStatus = 'late';
                         lateMinutes = parseInt(rec.late_minutes || 0);
@@ -1836,7 +1751,7 @@ app.post('/api/attendance/import', async (req, res) => {
                         check_out_time: rec.check_out_time || null,
                         status: attendanceStatus,
                         late_minutes: lateMinutes,
-                        shift_id: shiftId
+                        shift_id: null
                     });
                     skipped++;
 
@@ -1851,7 +1766,7 @@ app.post('/api/attendance/import', async (req, res) => {
                         rec.check_out_time || null,
                         attendanceStatus,
                         lateMinutes,
-                        shiftId
+                        null
                     ]);
 
                     inserted++;

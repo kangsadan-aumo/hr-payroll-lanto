@@ -59,7 +59,6 @@ export const DataImport: React.FC = () => {
     const [uploading, setUploading] = useState(false);
     const [previewRecords, setPreviewRecords] = useState<any[]>([]);
     const [allEmployees, setAllEmployees] = useState<any[]>([]);
-    const [shifts, setShifts] = useState<any[]>([]);
     const [importErrors, setImportErrors] = useState<any[]>([]);
 
 
@@ -114,16 +113,7 @@ export const DataImport: React.FC = () => {
 
     useEffect(() => { 
         fetchDbAttendance();
-        const fetchShifts = async () => {
-            try {
-                const res = await axios.get(`${API}/shifts`);
-                setShifts(res.data);
-            } catch (err) {
-                console.error("Failed to fetch shifts", err);
-            }
-        };
         fetchEmployees();
-        fetchShifts();
     }, [dbDateRange, dbDay, viewMode]);
 
 
@@ -207,7 +197,7 @@ export const DataImport: React.FC = () => {
                             check_in_time: normalizeDateTime(String(row[2] || '')),
                             check_out_time: normalizeDateTime(String(row[3] || '')),
                             csv_status: '',
-                            shift_name: ''
+
                         }));
 
 
@@ -221,7 +211,7 @@ export const DataImport: React.FC = () => {
                         check_in_time: normalizeDateTime(r.checkInDate, r.checkInTime),
                         check_out_time: normalizeDateTime(r.checkOutDate, r.checkOutTime),
                         csv_status: r.status ? String(r.status).trim() : '',
-                        shift_name: r.shiftName ? String(r.shiftName).trim() : ''
+
                     }));
 
                 }
@@ -252,14 +242,13 @@ export const DataImport: React.FC = () => {
                         isActuallyLate = true;
                         lateMins = parseInt(r.csv_status.replace(/\D/g, '')) || 0;
                     } else if (!r.csv_status || r.csv_status === '' || r.csv_status.includes('ปกติ') || r.csv_status.toLowerCase() === 'on_time') {
-                        // ถ้าลูกค้าเลือกกะมาเอง (shift_name) ให้ใช้เวลากะที่เลือกแทนกะประจำ
-                        const importedShift = r.shift_name ? shifts.find(s => String(s.shiftName).toLowerCase().includes(String(r.shift_name).toLowerCase())) : null;
-                        const shiftStart = importedShift ? importedShift.startTime?.substring(0, 5) : (empFound && empFound.shift_start_time ? empFound.shift_start_time.substring(0, 5) : null);
+    
+                        const shiftStart = empFound && empFound.shift_start_time ? empFound.shift_start_time.substring(0, 5) : null;
                         
                         if (shiftStart !== null) {
                             // คำนวณเบื้องต้น (Backend จะคำนวณละเอียดอีกครั้ง)
 
-                            const allowance = importedShift ? parseInt(importedShift.lateThreshold || 0) : (empFound && empFound.late_allowance_minutes ? parseInt(empFound.late_allowance_minutes) : 0);
+                            const allowance = empFound && empFound.late_allowance_minutes ? parseInt(empFound.late_allowance_minutes) : 0;
                             
                             if (checkInTimeOnly) {
                                 const [sh, sm] = shiftStart.split(':').map(Number);
@@ -365,7 +354,7 @@ export const DataImport: React.FC = () => {
                 check_out_time: r.check_out_time,
                 status: r.status, // ใช้ status ที่เราตรวจเบื้องต้น (late/on_time)
                 late_minutes: r.late_minutes || 0, // ส่งค่านาทีที่ดึงมาจาก CSV
-                shift_name: r.shift_name
+
             }));
 
 
@@ -622,7 +611,7 @@ export const DataImport: React.FC = () => {
             }
         },
         { title: 'สาย (นาที)', dataIndex: 'late_minutes', key: 'late_minutes', render: (v: number) => v > 0 ? <Text type="danger">{v}</Text> : 0 },
-        { title: 'กะที่ตรวจพบ', dataIndex: 'detected_shift_name', key: 'detected_shift_name' },
+
     ];
 
     return (
@@ -833,7 +822,7 @@ export const DataImport: React.FC = () => {
                                     render: (v) => v ? dayjs(v).format('DD/MM/YYYY HH:mm') : '-',
                                 },
                                 {
-                                    title: 'กะการทำงาน', dataIndex: 'shift_name', key: 'shift_name', width: 120,
+
                                     render: (v) => v || <Text type="secondary">-</Text>
                                 },
                                 {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, TimePicker, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider } from 'antd';
-import { SaveOutlined, BankOutlined, FieldTimeOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider } from 'antd';
+import { SaveOutlined, BankOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import { API_BASE_URL as API } from './api';
@@ -14,25 +14,21 @@ export const Settings: React.FC = () => {
 
     // Form instances
     const [companyForm] = Form.useForm();
-    const [shiftForm] = Form.useForm();
     const [leaveRuleForm] = Form.useForm();
     const [leaveTypeForm] = Form.useForm();
     const [holidayForm] = Form.useForm();
 
     // Data States
-    const [shifts, setShifts] = useState<any[]>([]);
     const [leaveRules, setLeaveRules] = useState<any[]>([]);
     const [otherLeaves, setOtherLeaves] = useState<any[]>([]);
     const [publicHolidays, setPublicHolidays] = useState<any[]>([]);
 
     // Modal Visibilities
-    const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
     const [isLeaveRuleModalOpen, setIsLeaveRuleModalOpen] = useState(false);
     const [isLeaveTypeModalOpen, setIsLeaveTypeModalOpen] = useState(false);
     const [isHolidayModalOpen, setIsHolidayModalOpen] = useState(false);
 
     // Edit states
-    const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
     const [editingLeaveRuleId, setEditingLeaveRuleId] = useState<string | null>(null);
     const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
 
@@ -42,9 +38,8 @@ export const Settings: React.FC = () => {
     const fetchAllData = async () => {
         setLoading(true);
         try {
-            const [settingsRes, shiftsRes, leaveRulesRes, leaveTypesRes, holidaysRes] = await Promise.all([
+            const [settingsRes, leaveRulesRes, leaveTypesRes, holidaysRes] = await Promise.all([
                 axios.get(`${API_BASE}/settings`),
-                axios.get(`${API_BASE}/shifts`),
                 axios.get(`${API_BASE}/leave-rules`),
                 axios.get(`${API_BASE}/leave-types`),
                 axios.get(`${API_BASE}/settings/holidays`)
@@ -68,7 +63,7 @@ export const Settings: React.FC = () => {
             });
 
             // Set Others
-            setShifts(shiftsRes.data);
+
             setLeaveRules(leaveRulesRes.data);
             setOtherLeaves(leaveTypesRes.data);
             setPublicHolidays(holidaysRes.data);
@@ -109,39 +104,6 @@ export const Settings: React.FC = () => {
     };
 
     // --- CRUD Handlers ---
-
-    // Shifts
-    const handleSaveShift = async (values: any) => {
-        const payload = {
-            shiftName: values.shiftName,
-            startTime: values.startTime.format('HH:mm:ss'),
-            endTime: values.endTime.format('HH:mm:ss'),
-            lateThreshold: values.lateThreshold,
-            color: values.color
-        };
-
-        try {
-            if (editingShiftId) {
-                await axios.put(`${API_BASE}/shifts/${editingShiftId}`, payload);
-                message.success('อัปเดตกะการทำงานสำเร็จ');
-            } else {
-                await axios.post(`${API_BASE}/shifts`, payload);
-                message.success('เพิ่มกะการทำงานสำเร็จ');
-            }
-            setIsShiftModalOpen(false);
-            setEditingShiftId(null);
-            shiftForm.resetFields();
-            fetchAllData();
-        } catch (error) { message.error('เกิดข้อผิดพลาดในการบันทึกกะ'); }
-    };
-
-    const handleDeleteShift = async (id: string) => {
-        try {
-            await axios.delete(`${API_BASE}/shifts/${id}`);
-            message.success('ลบกะการทำงานสำเร็จ');
-            fetchAllData();
-        } catch (error) { message.error('เกิดข้อผิดพลาดในการลบกะ'); }
-    };
 
     // Leave Rules
     const handleSaveLeaveRule = async (values: any) => {
@@ -245,31 +207,6 @@ export const Settings: React.FC = () => {
 
 
     // --- Columns Definitions ---
-
-    const shiftColumns = [
-        { title: 'ชื่อกะ (Shift Name)', dataIndex: 'shiftName', key: 'shiftName', render: (text: string, record: any) => <Tag color={record.color || 'blue'}>{text}</Tag> },
-        { title: 'เวลาเข้างาน', dataIndex: 'startTime', key: 'startTime' },
-        { title: 'เวลาเลิกงาน', dataIndex: 'endTime', key: 'endTime' },
-        { title: 'สายได้ไม่เกิน (นาที)', dataIndex: 'lateThreshold', key: 'lateThreshold', render: (val: number) => `${val} นาที` },
-        {
-            title: 'จัดการ', key: 'action', align: 'center' as const, render: (_: any, record: any) => (
-                <Space>
-                    <Button type="text" icon={<EditOutlined style={{ color: '#1890ff' }} />} onClick={() => {
-                        setEditingShiftId(record.id);
-                        shiftForm.setFieldsValue({
-                            shiftName: record.shiftName,
-                            startTime: dayjs(record.startTime, 'HH:mm:ss'),
-                            endTime: dayjs(record.endTime, 'HH:mm:ss'),
-                            lateThreshold: record.lateThreshold,
-                            color: record.color || 'blue'
-                        });
-                        setIsShiftModalOpen(true);
-                    }} />
-                    <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDeleteShift(record.id)} />
-                </Space>
-            )
-        }
-    ];
 
     const leaveRuleColumns = [
         { title: 'อายุงานขั้นต่ำ (ปี)', dataIndex: 'minYears', key: 'minYears' },
@@ -435,16 +372,6 @@ export const Settings: React.FC = () => {
                         </div>
                     </TabPane>
 
-                    <TabPane tab={<span><FieldTimeOutlined /> เวลาการทำงาน (Shifts)</span>} key="2">
-                        <div style={{ paddingLeft: 24 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                                <Title level={4}>จัดการกะเวลาทำงาน</Title>
-                                <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingShiftId(null); shiftForm.resetFields(); setIsShiftModalOpen(true); }}>เพิ่มกะใหม่</Button>
-                            </div>
-                            <Table columns={shiftColumns} dataSource={shifts} rowKey="id" pagination={false} bordered />
-                        </div>
-                    </TabPane>
-
                     <TabPane tab={<span><CalendarOutlined /> นโยบายวันหยุดพักผ่อน</span>} key="3">
                         <div style={{ paddingLeft: 24, maxWidth: 800 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -481,34 +408,6 @@ export const Settings: React.FC = () => {
                 </Tabs>
               </Spin>
             </Card>
-
-            {/* Shift Modal */}
-            <Modal title={editingShiftId ? "แก้ไขกะทำงาน" : "เพิ่มกะทำงานใหม่"} open={isShiftModalOpen} onOk={() => shiftForm.submit()} onCancel={() => setIsShiftModalOpen(false)}>
-                <Form form={shiftForm} layout="vertical" onFinish={handleSaveShift}>
-                    <Form.Item name="shiftName" label="ชื่อกะ" rules={[{ required: true }]}><Input /></Form.Item>
-                    <Row gutter={16}>
-                        <Col span={12}>
-                            <Form.Item name="startTime" label="เวลาเข้างาน" rules={[{ required: true }]}>
-                                <TimePicker format="HH:mm" style={{ width: '100%' }} />
-                            </Form.Item>
-                        </Col>
-                        <Col span={12}>
-                            <Form.Item name="endTime" label="เวลาเลิกงาน" rules={[{ required: true }]}>
-                                <TimePicker format="HH:mm" style={{ width: '100%' }} />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                    <Form.Item name="lateThreshold" label="สายได้ไม่เกิน (นาที)" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
-                    <Form.Item name="color" label="สีแสดงผล" initialValue="blue">
-                        <Select>
-                            <Select.Option value="blue"><Tag color="blue">Blue</Tag></Select.Option>
-                            <Select.Option value="cyan"><Tag color="cyan">Cyan</Tag></Select.Option>
-                            <Select.Option value="orange"><Tag color="orange">Orange</Tag></Select.Option>
-                            <Select.Option value="purple"><Tag color="purple">Purple</Tag></Select.Option>
-                        </Select>
-                    </Form.Item>
-                </Form>
-            </Modal>
 
             {/* Leave Rule Modal */}
             <Modal title={editingLeaveRuleId ? "แก้ไขเกณฑ์อายุงาน" : "เพิ่มเกณฑ์อายุงาน"} open={isLeaveRuleModalOpen} onOk={() => leaveRuleForm.submit()} onCancel={() => setIsLeaveRuleModalOpen(false)}>

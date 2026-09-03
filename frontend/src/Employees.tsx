@@ -373,7 +373,7 @@ export const Employees: React.FC = () => {
     };
 
     const handleDownloadTemplate = () => {
-        const blob = new Blob(['\uFEFF' + TEMPLATE_CSV], { type: 'text/csv;charset=utf-8;' });
+        const blob = new Blob(['uFEFF' + TEMPLATE_CSV], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
