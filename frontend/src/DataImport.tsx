@@ -383,8 +383,7 @@ export const DataImport: React.FC = () => {
         const log = selectedEmployeeLogs.find(l => dayjs(l.check_in_time).isSame(current, 'day'));
         const holiday = publicHolidays.find(h => dayjs(h.holiday_date).isSame(current, 'day'));
 
-        const empFound = allEmployees.find(e => e.employee_code === selectedEmployeeId);
-        const shiftStart = empFound && empFound.shift_start_time ? empFound.shift_start_time.substring(0, 5) : null;
+
 
         let leaveAbbr = '';
         if (isLeaveDay) {
@@ -405,12 +404,12 @@ export const DataImport: React.FC = () => {
         if (log) {
             const checkIn = log.check_in_time ? dayjs(log.check_in_time).format('HH:mm') : '-';
             
-            // Visual check against employee's specific shift (only if shift is fixed)
-            const isLate = log.status === 'late' || (shiftStart !== null && checkIn !== '-' && checkIn > shiftStart);
+            // มีตัวแดงหากเข้างานสายเกิน 08.09 (08.10 เป็นต้นไป)
+            const isLate = checkIn !== '-' && checkIn >= '08:10';
 
             return (
                 <div style={{ textAlign: 'center', lineHeight: '1.2', marginTop: '2px' }}>
-                    <div style={{ fontSize: '11px', color: isLate ? '#faad14' : '#52c41a', fontWeight: isLate ? 'bold' : 'normal' }}>
+                    <div style={{ fontSize: '11px', color: isLate ? '#cf1322' : '#52c41a', fontWeight: isLate ? 'bold' : 'normal' }}>
                         {checkIn}
                     </div>
                     <div style={{ fontSize: '11px', color: '#1890ff' }}>
@@ -418,12 +417,6 @@ export const DataImport: React.FC = () => {
                             ? dayjs(log.check_out_time).format('HH:mm') 
                             : 'n/o'}
                     </div>
-                    {/* โน้ตชื่อกะที่ตรวจจับได้ สำหรับพนักงานที่ไม่มีกะประจำ */}
-                    {log.detected_shift_name && (
-                        <div style={{ fontSize: '9px', color: '#888', marginTop: '1px' }}>
-                            กะ: {log.detected_shift_name}
-                        </div>
-                    )}
                     {/* แสดงป้ายบอกกรณีมาทำงานในวันหยุดหรือวันลา */}
                     {(isLeaveDay || holiday) && (
                         <div style={{ fontSize: '8px', color: '#999', fontStyle: 'italic', marginTop: '1px' }}>
@@ -504,48 +497,41 @@ export const DataImport: React.FC = () => {
             onFilter: (value: any, record: DbSummary) => record.department === value,
         },
         {
-            title: 'วันมาทำงาน', key: 'workDays',
+            title: 'วันที่เข้างาน', key: 'workDays',
             align: 'center' as const,
-            render: (_: any, r: DbSummary) => (
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontWeight: 600, fontSize: 16 }}>{r.workDays}</div>
-                    <div style={{ fontSize: 11, color: '#888' }}>จ-ส: {r.weekdays} | อา: {r.weekends}</div>
-                </div>
-            ),
+            render: (_: any, r: DbSummary) => <div>จำนวน {r.workDays} วัน</div>,
             sorter: (a: DbSummary, b: DbSummary) => a.workDays - b.workDays,
         },
         {
-            title: 'วันหยุด (อาทิตย์)', dataIndex: 'weekends', key: 'weekends',
+            title: 'ลา/ขาดงาน (วัน)', key: 'leaveDays',
             align: 'center' as const,
-            sorter: (a: DbSummary, b: DbSummary) => a.weekends - b.weekends,
-            render: (v: number) => v > 0
-                ? <Tag color="purple">{v} วัน</Tag>
-                : <Tag color="default">0</Tag>
+            render: (_: any, r: DbSummary) => {
+                const leaves = leaveRequests.filter(lr => lr.employee_name === r.name && (lr.status === 'approved' || lr.status === 'pending'));
+                const totalLeaves = leaves.reduce((sum, lr) => sum + Number(lr.total_days || 0), 0);
+                return <Tag color={totalLeaves > 0 ? 'orange' : 'default'}>{totalLeaves > 0 ? `${totalLeaves} วัน` : '0'}</Tag>;
+            }
         },
         {
-            title: 'ตรงเวลา (วัน)', dataIndex: 'onTimeDays', key: 'onTimeDays',
-            align: 'center' as const,
-            sorter: (a: DbSummary, b: DbSummary) => a.onTimeDays - b.onTimeDays,
-            render: (v: number) => <Tag color="success" icon={<CheckCircleOutlined />}>{v}</Tag>
-        },
-        {
-            title: 'มาสาย (ครั้ง)', dataIndex: 'lateCount', key: 'lateCount',
+            title: 'มาสายกี่วัน (นาที)', key: 'lateCount',
             align: 'center' as const,
             sorter: (a: DbSummary, b: DbSummary) => a.lateCount - b.lateCount,
-            render: (v: number) => <Tag color={v > 3 ? 'volcano' : v > 0 ? 'orange' : 'success'}>{v}</Tag>
+            render: (_: any, r: DbSummary) => (
+                r.lateCount > 0 
+                    ? <Text type="danger">{r.lateCount} วัน ({r.totalLateMinutes} นาที)</Text> 
+                    : <Tag color="success">0</Tag>
+            )
         },
         {
-            title: 'รวมนาทีสาย', dataIndex: 'totalLateMinutes', key: 'totalLateMinutes',
+            title: 'ปฏิทิน', key: 'calendar',
             align: 'center' as const,
-            sorter: (a: DbSummary, b: DbSummary) => a.totalLateMinutes - b.totalLateMinutes,
-            render: (v: number, record: DbSummary) => (
+            render: (_: any, record: DbSummary) => (
                 <Button 
                     type="link" 
                     size="small" 
                     icon={<CalendarOutlined />} 
                     onClick={() => handleOpenCalendar(record)}
                 >
-                    {v > 0 ? <Text type="danger">{v} นาที</Text> : 'ดูปฏิทิน'}
+                    ดูปฏิทิน
                 </Button>
             )
         },

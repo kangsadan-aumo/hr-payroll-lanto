@@ -829,7 +829,7 @@ export const Employees: React.FC = () => {
                     <Tabs defaultActiveKey="basic">
                         <TabPane tab="ข้อมูลทั่วไป" key="basic">
                             <Row gutter={16}>
-                                <Col span={4}>
+                                <Col span={6}>
                                     <Form.Item name="title" label="คำนำหน้า" rules={[{ required: true }]}>
                                         <Select>
                                             <Option value="นาย">นาย</Option>
@@ -839,12 +839,12 @@ export const Employees: React.FC = () => {
                                         </Select>
                                     </Form.Item>
                                 </Col>
-                                <Col span={10}>
+                                <Col span={9}>
                                     <Form.Item name="first_name" label="ชื่อ" rules={[{ required: true, message: 'กรุณากรอกชื่อ' }]}>
                                         <Input placeholder="เช่น สมชาย" />
                                     </Form.Item>
                                 </Col>
-                                <Col span={10}>
+                                <Col span={9}>
                                     <Form.Item name="last_name" label="นามสกุล" rules={[{ required: true, message: 'กรุณากรอกนามสกุล' }]}>
                                         <Input placeholder="เช่น ใจกล้า" />
                                     </Form.Item>
