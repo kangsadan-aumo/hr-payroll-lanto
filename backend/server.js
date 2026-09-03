@@ -504,7 +504,7 @@ app.post('/api/employees', async (req, res) => {
                 employee_code, title, first_name, middle_name, last_name, department_id, employee_type_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
                 tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
                 pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 code, title || 'นาย', first_name, middle_name || null, last_name, department_id, employee_type_id || null, shift_id || null, position, join_date, resign_date || null, status || 'active', base_salary || 0, phone || null, email || null, id_number || null,
                 tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
