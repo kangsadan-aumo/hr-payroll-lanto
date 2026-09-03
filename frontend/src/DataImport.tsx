@@ -499,7 +499,12 @@ export const DataImport: React.FC = () => {
         {
             title: 'วันที่เข้างาน', key: 'workDays',
             align: 'center' as const,
-            render: (_: any, r: DbSummary) => <div>จำนวน {r.workDays} วัน</div>,
+            render: (_: any, r: DbSummary) => (
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontWeight: 600, fontSize: 16, color: '#1890ff' }}>{r.workDays}</div>
+                    <div style={{ fontSize: 11, color: '#888' }}>วัน</div>
+                </div>
+            ),
             sorter: (a: DbSummary, b: DbSummary) => a.workDays - b.workDays,
         },
         {
@@ -508,7 +513,7 @@ export const DataImport: React.FC = () => {
             render: (_: any, r: DbSummary) => {
                 const leaves = leaveRequests.filter(lr => lr.employee_name === r.name && (lr.status === 'approved' || lr.status === 'pending'));
                 const totalLeaves = leaves.reduce((sum, lr) => sum + Number(lr.total_days || 0), 0);
-                return <Tag color={totalLeaves > 0 ? 'orange' : 'default'}>{totalLeaves > 0 ? `${totalLeaves} วัน` : '0'}</Tag>;
+                return <Tag color={totalLeaves > 0 ? 'volcano' : 'default'} style={{ fontWeight: 500, padding: '0 8px' }}>{totalLeaves > 0 ? `${totalLeaves} วัน` : '0'}</Tag>;
             }
         },
         {
@@ -517,8 +522,8 @@ export const DataImport: React.FC = () => {
             sorter: (a: DbSummary, b: DbSummary) => a.lateCount - b.lateCount,
             render: (_: any, r: DbSummary) => (
                 r.lateCount > 0 
-                    ? <Text type="danger">{r.lateCount} วัน ({r.totalLateMinutes} นาที)</Text> 
-                    : <Tag color="success">0</Tag>
+                    ? <Tag color="orange" style={{ fontWeight: 500, padding: '0 8px' }}>{r.lateCount} วัน ({r.totalLateMinutes} นาที)</Tag> 
+                    : <Tag color="success" icon={<CheckCircleOutlined />}>ไม่สายเลย</Tag>
             )
         },
         {
@@ -526,10 +531,12 @@ export const DataImport: React.FC = () => {
             align: 'center' as const,
             render: (_: any, record: DbSummary) => (
                 <Button 
-                    type="link" 
+                    type="primary" 
+                    ghost
                     size="small" 
                     icon={<CalendarOutlined />} 
                     onClick={() => handleOpenCalendar(record)}
+                    style={{ borderRadius: 4 }}
                 >
                     ดูปฏิทิน
                 </Button>
