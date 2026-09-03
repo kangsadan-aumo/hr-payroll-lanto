@@ -784,20 +784,7 @@ app.post('/api/leaves/requests', async (req, res) => {
     }
 });
 
-app.put('/api/leaves/requests/:id/status', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-        const [result] = await pool.query(
-            'UPDATE leave_requests SET status = ?, approved_at=CURRENT_TIMESTAMP WHERE id = ?',
-            [status, id]
-        );
-        if (result.affectedRows === 0) return res.status(404).json({ error: 'Leave request not found' });
-        res.json({ message: `Leave request ${status}` });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+
 
 // ─────────────────────────────────────────────
 // LEAVES IMPORT (BULK UPSERT)
@@ -2485,6 +2472,47 @@ app.get('/api/admin/audit-logs', async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// ─────────────────────────────────────────────
+// PAYROLL FORMULAS
+// ─────────────────────────────────────────────
+app.get('/api/formulas', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM payroll_formulas ORDER BY created_at DESC');
+        res.json(rows);
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post('/api/formulas', async (req, res) => {
+    try {
+        const { name, expression, description } = req.body;
+        const [result] = await pool.query(
+            'INSERT INTO payroll_formulas (name, expression, description) VALUES (?, ?, ?)',
+            [name, expression, description]
+        );
+        res.status(201).json({ id: result.insertId.toString(), message: 'Formula created successfully' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put('/api/formulas/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, expression, description } = req.body;
+        await pool.query(
+            'UPDATE payroll_formulas SET name = ?, expression = ?, description = ? WHERE id = ?',
+            [name, expression, description, id]
+        );
+        res.json({ message: 'Formula updated successfully' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.delete('/api/formulas/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await pool.query('DELETE FROM payroll_formulas WHERE id = ?', [id]);
+        res.json({ message: 'Formula deleted successfully' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 async function runMigrations() {
     console.log('🏗️ Starting safe migrations...');
     const baseTables = [
@@ -2701,6 +2729,14 @@ async function runMigrations() {
             category VARCHAR(100),
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+        `CREATE TABLE IF NOT EXISTS payroll_formulas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            expression TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     ];
 

@@ -16,7 +16,8 @@ import {
     AuditOutlined,
     BarChartOutlined,
     FileProtectOutlined,
-    ClockCircleOutlined, // Added ClockCircleOutlined
+    ClockCircleOutlined,
+    CalculatorOutlined,
 } from '@ant-design/icons';
 import './MainLayout.css';
 
@@ -41,6 +42,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
         { key: 'hr-calendar', icon: <CalendarOutlined style={{ color: '#ff4d4f' }} />, label: 'ปฏิทินงาน HR' },
         { key: 'claims', icon: <AuditOutlined />, label: 'สวัสดิการและเบิกจ่าย' },
         { key: 'payroll', icon: <DollarOutlined />, label: 'จัดการเงินเดือน' },
+        { key: 'formulas', icon: <CalculatorOutlined />, label: 'ตั้งค่าสูตรคำนวณ' },
         { key: 'payroll-history', icon: <HistoryOutlined />, label: 'ประวัติเงินเดือน' },
         { key: 'overtime', icon: <ClockCircleOutlined />, label: 'จัดการค่าล่วงเวลา (OT)' },
         { key: 'analytics', icon: <BarChartOutlined />, label: 'รายงานและวิเคราะห์' },

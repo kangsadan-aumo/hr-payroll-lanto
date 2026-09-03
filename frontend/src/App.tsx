@@ -13,6 +13,7 @@ import { HRCalendarView } from './HRCalendarView';
 import { AuditLogs } from './AuditLogs';
 import { GovReports } from './GovReports';
 import { Overtime } from './Overtime';
+import { FormulaBuilder } from './FormulaBuilder';
 import { Login } from './Login';
 import './App.css';
 
@@ -57,6 +58,8 @@ function App() {
         return <Claims />;
       case 'payroll':
         return <Payroll initialMonth={payrollMonth} />;
+      case 'formulas':
+        return <FormulaBuilder />;
       case 'payroll-history':
         return <PayrollHistory onViewPayroll={handleViewPayroll} />;
       case 'analytics':

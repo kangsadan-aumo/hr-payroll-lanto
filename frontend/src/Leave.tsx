@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Statistic, Typography, Table, Tag, Button, Space, Input, DatePicker, Select, Modal, Form, Upload, message } from 'antd';
+import { Row, Col, Card, Statistic, Typography, Table, Button, Space, Input, DatePicker, Select, Modal, Form, Upload, message } from 'antd';
 import type { TableProps } from 'antd';
 import {
     CalendarOutlined,
     CheckCircleOutlined,
     ClockCircleOutlined,
-    CloseCircleOutlined,
+    
     SearchOutlined,
     PlusOutlined,
     UploadOutlined,
@@ -44,7 +44,6 @@ export const Leave: React.FC = () => {
 
     // Filter states
     const [searchText, setSearchText] = useState('');
-    const [statusFilter] = useState('all');
     const [dateRangeFilter, setDateRangeFilter] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
 
     // Modal states
@@ -78,15 +77,14 @@ export const Leave: React.FC = () => {
 
     // Derived statistics
     const stats = {
-        totalApproved: leaveRequests.filter(r => r.status === 'approved' && dayjs(r.start_date).isAfter(dayjs().subtract(1, 'month'))).length,
-        leavesToday: leaveRequests.filter(r => r.status === 'approved' && dayjs().isBetween(dayjs(r.start_date), dayjs(r.end_date), 'day', '[]')).length,
+        totalApproved: leaveRequests.filter(r => dayjs(r.start_date).isAfter(dayjs().subtract(1, 'month'))).length,
+        leavesToday: leaveRequests.filter(r => dayjs().isBetween(dayjs(r.start_date), dayjs(r.end_date), 'day', '[]')).length,
     };
 
     // Filter data
     const filteredLeaves = leaveRequests.filter(req => {
         const matchSearch = req.employee_name.toLowerCase().includes(searchText.toLowerCase()) ||
             (req.department && req.department.toLowerCase().includes(searchText.toLowerCase()));
-        const matchStatus = statusFilter === 'all' || req.status === statusFilter;
         
         let matchDate = true;
         if (dateRangeFilter) {
@@ -96,7 +94,7 @@ export const Leave: React.FC = () => {
             matchDate = reqDate.isBetween(start, end, 'day', '[]');
         }
         
-        return matchSearch && matchStatus && matchDate;
+        return matchSearch && matchDate;
     });
 
     const calculateWorkDays = (start: dayjs.Dayjs, end: dayjs.Dayjs) => {
@@ -182,23 +180,7 @@ export const Leave: React.FC = () => {
             dataIndex: 'reason',
             key: 'reason',
             ellipsis: true
-        },
-        {
-            title: 'สถานะ',
-            dataIndex: 'status',
-            key: 'status',
-            render: (status) => {
-                let color = 'default';
-                let text = status;
-                let icon = null;
-
-                if (status === 'approved') { color = 'success'; text = 'อนุมัติแล้ว'; icon = <CheckCircleOutlined />; }
-                else if (status === 'rejected') { color = 'error'; text = 'ไม่อนุมัติ'; icon = <CloseCircleOutlined />; }
-                else if (status === 'pending') { color = 'warning'; text = 'รอพิจารณา'; icon = <ClockCircleOutlined />; }
-
-                return <Tag color={color} icon={icon}>{text}</Tag>;
-            }
-        },
+        }
 
     ];
 
@@ -279,7 +261,7 @@ export const Leave: React.FC = () => {
                 <Col xs={24} sm={8}>
                     <Card bordered={false} style={{ borderRadius: 8 }}>
                         <Statistic
-                            title="อนุมัติเดือนนี้ (Approved)"
+                            title="บันทึกการลาในเดือนนี้ (Recorded)"
                             value={stats.totalApproved}
                             valueStyle={{ color: '#52c41a', fontWeight: 'bold' }}
                             prefix={<CheckCircleOutlined />}
