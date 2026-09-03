@@ -8,7 +8,7 @@ import {
     InboxOutlined, UserOutlined, ClockCircleOutlined,
     SearchOutlined, DatabaseOutlined, SyncOutlined,
     CheckCircleOutlined, CalendarOutlined, FileExcelOutlined,
-    LeftOutlined, RightOutlined, WarningOutlined, DeleteOutlined
+    LeftOutlined, RightOutlined, WarningOutlined, DeleteOutlined, DownloadOutlined
 } from '@ant-design/icons';
 import { parseAttendanceCSV } from './utils/csvProcessor';
 import dayjs, { Dayjs } from 'dayjs';
@@ -42,7 +42,7 @@ export const DataImport: React.FC = () => {
     const [dbSummary, setDbSummary] = useState<DbSummary[]>([]);
     const [dbLogs, setDbLogs] = useState<any[]>([]);
     const [dbLoading, setDbLoading] = useState(false);
-    const [dbMonth, setDbMonth] = useState<dayjs.Dayjs | null>(dayjs());
+    const [dbDateRange, setDbDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([dayjs().startOf('month'), dayjs().endOf('month')]);
     const [dbDay, setDbDay] = useState<dayjs.Dayjs | null>(dayjs());
     const [viewMode, setViewMode] = useState<'monthly' | 'daily'>('monthly');
     const [dbSearch, setDbSearch] = useState('');
@@ -72,10 +72,10 @@ export const DataImport: React.FC = () => {
     const fetchDbAttendance = async () => {
         setDbLoading(true);
         try {
-            const month = dbMonth ? dbMonth.month() + 1 : undefined;
-            const year = dbMonth ? dbMonth.year() : undefined;
+            const startDate = dbDateRange[0] ? dbDateRange[0].format('YYYY-MM-DD') : undefined;
+            const endDate = dbDateRange[1] ? dbDateRange[1].format('YYYY-MM-DD') : undefined;
             const [res, leaveRes, holidaysRes] = await Promise.all([
-                axios.get(`${API}/attendance`, { params: { month, year } }),
+                axios.get(`${API}/attendance`, { params: { startDate, endDate } }),
                 axios.get(`${API}/leaves/requests`),
                 axios.get(`${API}/settings/holidays`)
             ]);
@@ -111,7 +111,7 @@ export const DataImport: React.FC = () => {
         };
         fetchEmployees();
         fetchShifts();
-    }, [dbMonth]);
+    }, [dbDateRange]);
 
 
     // ── Normalize date string to YYYY-MM-DD HH:MM:SS for MariaDB ──
@@ -120,16 +120,30 @@ export const DataImport: React.FC = () => {
         try {
             let normalized = dateStr.trim();
             normalized = normalized.replace(/\//g, '-');
+            
+            let timePart = '00:00:00';
+            
+            if (normalized.includes(' ')) {
+                const parts = normalized.split(' ');
+                normalized = parts[0];
+                const t = parts[1];
+                timePart = t.length <= 5 ? `${t}:00` : t;
+            }
+
             if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(normalized)) {
                 const [d, m, y] = normalized.split('-');
                 normalized = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+            } else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(normalized)) {
+                const [y, m, d] = normalized.split('-');
+                normalized = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
             }
+
             const parts = normalized.split('-');
             if (parts[0] && parseInt(parts[0]) > 2500) {
                 parts[0] = String(parseInt(parts[0]) - 543);
                 normalized = parts.join('-');
             }
-            let timePart = '00:00:00';
+            
             const t = (timeStr || '').trim();
             if (t !== '' && t !== '-') {
                 const actualTime = t.includes(' ') ? t.split(' ').pop() || '' : t;
@@ -142,6 +156,21 @@ export const DataImport: React.FC = () => {
         }
     };
 
+    const handleDownloadTemplate = () => {
+        const header = ["หมายเลขพนักงาน", "ชื่อพนักงาน", "เวลาเข้างาน", "เวลาออกงาน"];
+        const exampleRow = ["EMP001", "สมชาย ใจดี", "2024-09-01 08:00", "2024-09-01 17:00"];
+        const csvContent = "\uFEFF" + header.join(",") + "\n" + exampleRow.join(",");
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'attendance_template.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     // ── File Upload Handler (Step 1: Preview & Validate) ──
     const handleFileUpload = (file: File) => {
         const reader = new FileReader();
@@ -152,19 +181,20 @@ export const DataImport: React.FC = () => {
                 
                 if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
                     const data = new Uint8Array(e.target?.result as ArrayBuffer);
-                    const workbook = XLSX.read(data, { type: 'array' });
+                    const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                     const firstSheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[firstSheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'YYYY-MM-DD HH:mm:ss' }) as any[][];
                     
                     if (jsonData.length > 1) {
                         rawRecords = jsonData.slice(1).map((row, i) => ({
                             _rowIndex: i + 2,
-                            employee_code: String(row[1] || '').trim(),
-                            shift_name: String(row[4] || '').trim(),
-                            check_in_time: normalizeDateTime(String(row[6] || ''), String(row[7] || '')),
-                            check_out_time: normalizeDateTime(String(row[8] || ''), String(row[9] || '')),
-                            csv_status: String(row[10] || '').trim(),
+                            employee_code: String(row[0] || '').trim(),
+                            employee_name: String(row[1] || '').trim(),
+                            check_in_time: normalizeDateTime(String(row[2] || '')),
+                            check_out_time: normalizeDateTime(String(row[3] || '')),
+                            csv_status: '',
+                            shift_name: ''
                         }));
 
 
@@ -321,8 +351,8 @@ export const DataImport: React.FC = () => {
     };
 
     const dateCellRender = (current: Dayjs) => {
-        // Only show indicators for the currently filtered month
-        if (current.month() !== dbMonth?.month() || current.year() !== dbMonth?.year()) {
+        // Only show indicators for the currently filtered month/range
+        if (current.isBefore(dbDateRange[0], 'day') || current.isAfter(dbDateRange[1], 'day')) {
             return null;
         }
 
@@ -479,13 +509,13 @@ export const DataImport: React.FC = () => {
             render: (_: any, r: DbSummary) => (
                 <div style={{ textAlign: 'center' }}>
                     <div style={{ fontWeight: 600, fontSize: 16 }}>{r.workDays}</div>
-                    <div style={{ fontSize: 11, color: '#888' }}>จ-ศ: {r.weekdays} | ส-อ: {r.weekends}</div>
+                    <div style={{ fontSize: 11, color: '#888' }}>จ-ส: {r.weekdays} | อา: {r.weekends}</div>
                 </div>
             ),
             sorter: (a: DbSummary, b: DbSummary) => a.workDays - b.workDays,
         },
         {
-            title: 'วันหยุด เสาร์-อาทิตย์', dataIndex: 'weekends', key: 'weekends',
+            title: 'วันหยุด (อาทิตย์)', dataIndex: 'weekends', key: 'weekends',
             align: 'center' as const,
             sorter: (a: DbSummary, b: DbSummary) => a.weekends - b.weekends,
             render: (v: number) => v > 0
@@ -571,13 +601,13 @@ export const DataImport: React.FC = () => {
                         <Select 
                             value={viewMode} 
                             onChange={(val: any) => setViewMode(val)} 
-                            style={{ width: 140 }}
+                            style={{ width: 180 }}
                         >
-                            <Option value="monthly">ดูแบบรายเดือน</Option>
-                            <Option value="daily">ดูแบบรายวัน</Option>
+                            <Option value="monthly">สรุปรายบุคคล (ช่วงวันที่)</Option>
+                            <Option value="daily">ดูข้อมูลรายวัน</Option>
                         </Select>
                         {viewMode === 'monthly' ? (
-                            <DatePicker picker="month" value={dbMonth} onChange={setDbMonth} allowClear={false} />
+                            <DatePicker.RangePicker value={dbDateRange} onChange={(dates) => setDbDateRange(dates as [Dayjs, Dayjs])} allowClear={false} />
                         ) : (
                             <DatePicker value={dbDay} onChange={setDbDay} allowClear={false} placeholder="เลือกวันที่" />
                         )}
@@ -600,7 +630,7 @@ export const DataImport: React.FC = () => {
                     <Col xs={24} sm={12} lg={6}>
                         <Card size="small" style={{ borderRadius: 6 }}>
                             <Statistic title="รวมวันมาทำงานทั้งหมด" value={dbWorkDays} prefix={<DatabaseOutlined />} valueStyle={{ color: '#1890ff' }}
-                                suffix={<span style={{ fontSize: 12, color: '#888' }}> (เสาร์-อาทิตย์: {dbWeekends})</span>} />
+                                suffix={<span style={{ fontSize: 12, color: '#888' }}> (วันหยุด: {dbWeekends})</span>} />
                         </Card>
                     </Col>
                     <Col xs={24} sm={12} lg={6}>
@@ -644,10 +674,15 @@ export const DataImport: React.FC = () => {
             {/* ── UPLOAD MODAL ── */}
             <Modal
                 title={
-                    <Space>
-                        <FileExcelOutlined style={{ color: '#52c41a' }} />
-                        <span>ตรวจสอบและนำเข้าข้อมูลการเข้า-ออกงาน</span>
-                    </Space>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: 24 }}>
+                        <Space>
+                            <FileExcelOutlined style={{ color: '#52c41a' }} />
+                            <span>ตรวจสอบและนำเข้าข้อมูลการเข้า-ออกงาน</span>
+                        </Space>
+                        <Button type="dashed" icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
+                            โหลดเทมเพลต
+                        </Button>
+                    </div>
                 }
                 open={isUploadModalVisible}
                 onCancel={() => !uploading && setIsUploadModalVisible(false)}
@@ -780,9 +815,9 @@ export const DataImport: React.FC = () => {
                 </div>
                 <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 8 }}>
                     <Calendar 
-                        value={dbMonth || dayjs()} 
+                        value={dbDateRange[0] || dayjs()} 
                         cellRender={calendarCellRender}
-                        onSelect={(date) => setDbMonth(date)}
+                        onSelect={(date) => setDbDateRange([date.startOf('month'), date.endOf('month')])}
                         headerRender={({ value }) => (
                             <div style={{ padding: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Title level={5} style={{ margin: 0, color: '#1890ff' }}>
@@ -792,11 +827,11 @@ export const DataImport: React.FC = () => {
                                     <Button 
                                         size="small" 
                                         icon={<LeftOutlined />} 
-                                        onClick={() => setDbMonth(value.subtract(1, 'month'))}
+                                        onClick={() => setDbDateRange([value.subtract(1, 'month').startOf('month'), value.subtract(1, 'month').endOf('month')])}
                                     />
                                     <Button 
                                         size="small" 
-                                        onClick={() => setDbMonth(dayjs())}
+                                        onClick={() => setDbDateRange([dayjs().startOf('month'), dayjs().endOf('month')])}
                                     >
                                         เดือนปัจจุบัน
                                     </Button>

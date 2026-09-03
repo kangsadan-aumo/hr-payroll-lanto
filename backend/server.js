@@ -14,7 +14,7 @@ dotenv.config();
 
 const app = express();
 app.use(cors({
-    origin: '*',
+    origin: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     credentials: true,
@@ -78,7 +78,7 @@ const ensureColumnExists = async (tableName, columnName, columnDefinition) => {
 // ─────────────────────────────────────────────
 // 📧 RESEND SETUP
 // ─────────────────────────────────────────────
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy123');
 
 if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY.includes('12345')) {
     console.warn('⚠️ RESEND_API_KEY is not set correctly. Email notifications may not work.');
@@ -737,8 +737,8 @@ app.post('/api/leaves/requests', async (req, res) => {
     try {
         const { employee_id, leave_type_id, start_date, end_date, total_days, reason } = req.body;
         const [result] = await pool.query(
-            'INSERT INTO leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, reason) VALUES (?, ?, ?, ?, ?, ?)',
-            [employee_id, leave_type_id, start_date, end_date, total_days, reason]
+            'INSERT INTO leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, reason, status, approved_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+            [employee_id, leave_type_id, start_date, end_date, total_days, reason, 'approved']
         );
         res.status(201).json({ id: result.insertId.toString(), message: 'Leave request created' });
     } catch (error) {
@@ -833,7 +833,7 @@ app.post('/api/leaves/import', async (req, res) => {
                         rec.endDate,
                         rec.days || 1,
                         rec.reason || 'Imported via CSV',
-                        rec.status === 'รอหัวหน้าอนุมัติ' || rec.status === 'pending' ? 'pending' : 'approved'
+                        'approved'
                     ]
                 );
 
@@ -1545,14 +1545,13 @@ app.get('/api/payroll/history', async (req, res) => {
 // GET ดึงข้อมูล attendance จาก DB พร้อมสรุปรายพนักงาน
 app.get('/api/attendance', async (req, res) => {
     try {
-        const month = req.query.month ? String(req.query.month).padStart(2, '0') : null;
-        const year = req.query.year ? String(req.query.year) : null;
+        const { startDate, endDate } = req.query;
 
         let whereClause = '';
         const params = [];
-        if (month && year) {
-            whereClause = `WHERE DATE_FORMAT(al.check_in_time, '%m') = ? AND DATE_FORMAT(al.check_in_time, '%Y') = ?`;
-            params.push(month, year);
+        if (startDate && endDate) {
+            whereClause = `WHERE al.check_in_time >= ? AND al.check_in_time <= ?`;
+            params.push(`${startDate} 00:00:00`, `${endDate} 23:59:59`);
         }
 
         const [rows] = await pool.query(`
@@ -1585,8 +1584,8 @@ app.get('/api/attendance', async (req, res) => {
                     name: r.emp_name,
                     department: r.department || 'ไม่ระบุ',
                     workDays: 0,        // วันทำงานทั้งหมด (รวม เสาร์-อาทิตย์)
-                    weekdays: 0,        // จันทร์-ศุกร์
-                    weekends: 0,        // เสาร์-อาทิตย์
+                    weekdays: 0,        // จันทร์-เสาร์
+                    weekends: 0,        // อาทิตย์
                     onTimeDays: 0,      // มาตรงเวลา ไม่สาย
                     lateCount: 0,       // มาสาย
                     totalLateMinutes: 0,
@@ -1597,8 +1596,8 @@ app.get('/api/attendance', async (req, res) => {
 
             // ตรวจสอบว่าเป็นวันหยุดสุดสัปดาห์หรือไม่
             if (r.check_in_time) {
-                const day = dayjs(r.check_in_time).day(); // 0=Sun, 6=Sat
-                if (day === 0 || day === 6) {
+                const day = dayjs(r.check_in_time).day(); // 0=Sun
+                if (day === 0) {
                     s.weekends++;
                 } else {
                     s.weekdays++;

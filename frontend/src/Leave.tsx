@@ -80,7 +80,6 @@ export const Leave: React.FC = () => {
 
     // Derived statistics
     const stats = {
-        totalPending: leaveRequests.filter(r => r.status === 'pending').length,
         totalApproved: leaveRequests.filter(r => r.status === 'approved' && dayjs(r.start_date).isAfter(dayjs().subtract(1, 'month'))).length,
         leavesToday: leaveRequests.filter(r => r.status === 'approved' && dayjs().isBetween(dayjs(r.start_date), dayjs(r.end_date), 'day', '[]')).length,
     };
@@ -146,38 +145,6 @@ export const Leave: React.FC = () => {
         }
     };
 
-    // Handle Status change (Approve / Reject)
-    const handleStatusUpdate = async (id: string, newStatus: 'approved' | 'rejected') => {
-        try {
-            await axios.put(`${API}/leaves/requests/${id}/status`, { status: newStatus });
-            message.success(`อัปเดตสถานะเป็น ${newStatus === 'approved' ? 'อนุมัติ' : 'ไม่อนุมัติ'} เรียบร้อย`);
-            setLeaveRequests(prev => prev.map(req => req.id === id ? { ...req, status: newStatus } : req));
-        } catch (error) {
-            message.error('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
-        }
-    };
-
-    // Table Context Menu
-    const getActionMenu = (record: LeaveRequest): MenuProps => {
-        return {
-            items: [
-                {
-                    key: 'approve',
-                    label: 'อนุมัติการลา',
-                    icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-                    disabled: record.status === 'approved',
-                    onClick: () => handleStatusUpdate(record.id, 'approved')
-                },
-                {
-                    key: 'reject',
-                    label: 'ไม่อนุมัติ',
-                    icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-                    disabled: record.status === 'rejected',
-                    onClick: () => handleStatusUpdate(record.id, 'rejected')
-                }
-            ]
-        };
-    };
 
     const columns: TableProps<LeaveRequest>['columns'] = [
         {
@@ -234,16 +201,7 @@ export const Leave: React.FC = () => {
                 return <Tag color={color} icon={icon}>{text}</Tag>;
             }
         },
-        {
-            title: 'จัดการ',
-            key: 'action',
-            align: 'center',
-            render: (_, record) => (
-                <Dropdown menu={getActionMenu(record)} trigger={['click']}>
-                    <Button type="text" icon={<MoreOutlined style={{ fontSize: 16 }} />} />
-                </Dropdown>
-            )
-        }
+
     ];
 
     // ── Normalize date string to YYYY-MM-DD ──
@@ -319,16 +277,7 @@ export const Leave: React.FC = () => {
             </div>
 
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                <Col xs={24} sm={8}>
-                    <Card bordered={false} style={{ borderRadius: 8 }}>
-                        <Statistic
-                            title="รออนุมัติ (Pending)"
-                            value={stats.totalPending}
-                            valueStyle={{ color: '#faad14', fontWeight: 'bold' }}
-                            prefix={<ClockCircleOutlined />}
-                        />
-                    </Card>
-                </Col>
+
                 <Col xs={24} sm={8}>
                     <Card bordered={false} style={{ borderRadius: 8 }}>
                         <Statistic
@@ -363,12 +312,7 @@ export const Leave: React.FC = () => {
                             onChange={e => setSearchText(e.target.value)}
                             allowClear
                         />
-                        <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 150 }} prefix={<FilterOutlined />}>
-                            <Option value="all">สถานะทั้งหมด</Option>
-                            <Option value="pending">รอพิจารณา</Option>
-                            <Option value="approved">อนุมัติแล้ว</Option>
-                            <Option value="rejected">ไม่อนุมัติ</Option>
-                        </Select>
+
                         <RangePicker 
                             style={{ width: 280 }} 
                             placeholder={['วันเริ่มต้น', 'วันสิ้นสุด']}

@@ -70,22 +70,20 @@ export function parseAttendanceCSV(csvContent: string): AttendanceRecord[] {
     const records: AttendanceRecord[] = [];
     for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i]);
-        if (values.length >= 10) {
+        if (values.length >= 2) { // 0: employeeId, 1: name, 2: in, 3: out
             records.push({
-                date: values[0],
-                employeeId: values[1],
-                name: values[2],
-                department: values[3],
-                shiftName: values[4],
-                branch: values[5],
-                checkInDate: values[6],
-                checkInTime: values[7],
-                checkOutDate: values[8],
-                checkOutTime: values[9],
-                status: values[10],
+                employeeId: values[0] || '',
+                name: values[1] || '',
+                checkInDate: values[2] || '',
+                checkInTime: '',
+                checkOutDate: values[3] || '',
+                checkOutTime: '',
+                date: '',
+                department: '',
+                shiftName: '',
+                branch: '',
+                status: '',
             });
-
-
         }
     }
     return records;

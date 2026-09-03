@@ -57,16 +57,6 @@ export const Overtime: React.FC = () => {
 
     useEffect(() => { fetchData(); }, []);
 
-    const handleStatusUpdate = async (id: string, status: string) => {
-        try {
-            await axios.put(`${API_BASE}/overtime/requests/${id}/status`, { status });
-            message.success('อัปเดตสถานะสำเร็จ');
-            fetchData();
-        } catch (error) {
-            message.error('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
-        }
-    };
-
     const handleDelete = async (id: string) => {
         try {
             await axios.delete(`${API_BASE}/overtime/requests/${id}`);
@@ -151,8 +141,6 @@ export const Overtime: React.FC = () => {
             render: (_: any, r: OvertimeRequest) => (
                 <Dropdown menu={{
                     items: [
-                        { key: 'app', label: 'อนุมัติ', icon: <CheckCircleOutlined />, onClick: () => handleStatusUpdate(r.id, 'approved'), disabled: r.status === 'approved' },
-                        { key: 'rej', label: 'ปฏิเสธ', icon: <CloseCircleOutlined />, onClick: () => handleStatusUpdate(r.id, 'rejected'), disabled: r.status === 'rejected' },
                         { key: 'del', label: 'ลบรายการ', icon: <CloseCircleOutlined />, danger: true, onClick: () => handleDelete(r.id) }
                     ]
                 }}>
@@ -173,11 +161,7 @@ export const Overtime: React.FC = () => {
             </div>
 
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                <Col span={8}>
-                    <Card size="small">
-                        <Statistic title="รออนุมัติ" value={requests.filter(r => r.status === 'pending').length} prefix={<ClockCircleOutlined />} valueStyle={{ color: '#faad14' }} />
-                    </Card>
-                </Col>
+
                 <Col span={8}>
                     <Card size="small">
                         <Statistic title="อนุมัติแล้ว (เดือนนี้)" value={requests.filter(r => r.status === 'approved' && dayjs(r.date).isSame(dayjs(), 'month')).length} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} />
@@ -194,12 +178,7 @@ export const Overtime: React.FC = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
                     <Space>
                         <Input placeholder="ค้นหาพนักงาน..." prefix={<SearchOutlined />} style={{ width: 300 }} value={searchText} onChange={e => setSearchText(e.target.value)} />
-                        <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 150 }}>
-                            <Option value="all">สถานะทั้งหมด</Option>
-                            <Option value="pending">รออนุมัติ</Option>
-                            <Option value="approved">อนุมัติแล้ว</Option>
-                            <Option value="rejected">ปฏิเสธ</Option>
-                        </Select>
+
                     </Space>
                 </div>
 

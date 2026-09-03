@@ -124,6 +124,7 @@ EMP002,สมหญิง,รักดี,IT Support,Developer,somying@company.c
 
 export const Employees: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>([]);
+    const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
     const [departmentsList, setDepartmentsList] = useState<any[]>([]);
     const [positionsList, setPositionsList] = useState<any[]>([]);
     const [shiftsList, setShiftsList] = useState<any[]>([]);
@@ -452,6 +453,18 @@ export const Employees: React.FC = () => {
         }
     };
 
+    const handleBulkDelete = async () => {
+        if (selectedRowKeys.length === 0) return;
+        try {
+            await Promise.all(selectedRowKeys.map(id => axios.delete(`${API}/employees/${id}`)));
+            message.success(`ลบข้อมูล ${selectedRowKeys.length} รายการ เรียบร้อยแล้ว`);
+            setSelectedRowKeys([]);
+            fetchData();
+        } catch {
+            message.error('เกิดข้อผิดพลาดในการลบข้อมูลบางส่วน');
+        }
+    };
+
     const openLeaveQuotaModal = async (record: Employee) => {
         setQuotaEmployee(record);
         try {
@@ -666,6 +679,11 @@ export const Employees: React.FC = () => {
                     <Text type="secondary">เพิ่ม ลบ แก้ไข นำเข้า และค้นหาข้อมูลบุคลากรในองค์กร</Text>
                 </div>
                 <Space wrap>
+                    {selectedRowKeys.length > 0 && (
+                        <Popconfirm title={`ยืนยันการลบพนักงาน ${selectedRowKeys.length} รายการ?`} onConfirm={handleBulkDelete}>
+                            <Button danger icon={<DeleteOutlined />}>ลบที่เลือก</Button>
+                        </Popconfirm>
+                    )}
                     <Tooltip title="ดาวน์โหลดตัวอย่างไฟล์ CSV">
                         <Button icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>Template CSV</Button>
                     </Tooltip>
@@ -693,6 +711,7 @@ export const Employees: React.FC = () => {
                     <Text type="secondary">พนักงานทั้งหมด {filteredEmployees.length} คน</Text>
                 </div>
                 <Table
+                    rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
                     columns={columns} dataSource={filteredEmployees} rowKey="id"
                     loading={loading} pagination={{ pageSize: 15 }} scroll={{ x: 1000 }} bordered
                 />
