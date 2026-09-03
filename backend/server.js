@@ -459,19 +459,19 @@ app.get('/api/employees', async (req, res) => {
 app.post('/api/employees', async (req, res) => {
     try {
         const { 
-            employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
+            employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
             tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
             pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
         } = req.body;
         const code = employee_code || `EMP${Math.floor(100 + Math.random() * 900)}`;
         const [result] = await pool.query(
             `INSERT INTO employees (
-                employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
+                employee_code, title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
                 tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
                 pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                code, title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, status || 'active', base_salary || 0, phone || null, email || null, id_number || null,
+                code, title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, resign_date || null, status || 'active', base_salary || 0, phone || null, email || null, id_number || null,
                 tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
                 pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, bank_name || null, bank_account_number || null
             ]
@@ -486,18 +486,18 @@ app.put('/api/employees/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const { 
-            title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, status, base_salary, phone, email, id_number,
+            title, first_name, middle_name, last_name, department_id, shift_id, position, join_date, resign_date, status, base_salary, phone, email, id_number,
             tax_form, branch_code, address_building, address_room, address_floor, address_village, address_no, address_moo, address_soi, address_yaek, address_road, address_subdistrict, address_district, address_province, address_zipcode,
             pnd3_income_type, pnd3_tax_rate, bank_name, bank_account_number
         } = req.body;
         const [result] = await pool.query(
             `UPDATE employees SET 
-                title=?, first_name=?, middle_name=?, last_name=?, department_id=?, shift_id=?, position=?, join_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?,
+                title=?, first_name=?, middle_name=?, last_name=?, department_id=?, shift_id=?, position=?, join_date=?, resign_date=?, status=?, base_salary=?, phone=?, email=?, id_number=?,
                 tax_form=?, branch_code=?, address_building=?, address_room=?, address_floor=?, address_village=?, address_no=?, address_moo=?, address_soi=?, address_yaek=?, address_road=?, address_subdistrict=?, address_district=?, address_province=?, address_zipcode=?,
                 pnd3_income_type=?, pnd3_tax_rate=?, bank_name=?, bank_account_number=?, updated_at=CURRENT_TIMESTAMP 
              WHERE id=?`,
             [
-                title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, status, base_salary, phone || null, email || null, id_number || null,
+                title || 'นาย', first_name, middle_name || null, last_name, department_id, shift_id || null, position, join_date, resign_date || null, status, base_salary, phone || null, email || null, id_number || null,
                 tax_form || 'pnd1', branch_code || '00000', address_building || null, address_room || null, address_floor || null, address_village || null, address_no || null, address_moo || null, address_soi || null, address_yaek || null, address_road || null, address_subdistrict || null, address_district || null, address_province || null, address_zipcode || null,
                 pnd3_income_type || '40(2)', pnd3_tax_rate || 3.00, bank_name || null, bank_account_number || null, id
             ]
@@ -2568,6 +2568,7 @@ async function runMigrations() {
             base_salary DECIMAL(10, 2) DEFAULT 0.00,
             status ENUM('active', 'inactive') DEFAULT 'active',
             join_date DATE,
+            resign_date DATE,
             email VARCHAR(150) DEFAULT NULL,
             id_number VARCHAR(20) DEFAULT NULL,
             bank_name VARCHAR(100),

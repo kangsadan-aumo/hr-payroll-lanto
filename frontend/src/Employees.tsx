@@ -373,7 +373,8 @@ export const Employees: React.FC = () => {
                 ...record, 
                 department_id: dep ? dep.id : null, 
                 shift_id: record.shift_id,
-                joinDate: dayjs(record.joinDate) 
+                joinDate: record.joinDate ? dayjs(record.joinDate) : null,
+                resignDate: (record as any).resign_date ? dayjs((record as any).resign_date) : null
             });
         } else {
             setEditingEmployee(null);
@@ -387,7 +388,8 @@ export const Employees: React.FC = () => {
     const handleSave = async (values: any) => {
         const payload = {
             ...values,
-            join_date: values.joinDate.format('YYYY-MM-DD'),
+            join_date: values.joinDate ? values.joinDate.format('YYYY-MM-DD') : null,
+            resign_date: (values.status === 'inactive' && values.resignDate) ? values.resignDate.format('YYYY-MM-DD') : null,
             shift_id: values.shift_id || null,
             base_salary: values.baseSalary || 0,
             id_number: values.id_number || null,
@@ -841,13 +843,6 @@ export const Employees: React.FC = () => {
                                     </Form.Item>
                                 </Col>
                                 <Col span={12}>
-                                    <Form.Item name="joinDate" label="วันที่เริ่มปฏิบัติงาน" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
-                                        <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
-                                    </Form.Item>
-                                </Col>
-                            </Row>
-                            <Row gutter={16}>
-                                <Col span={12}>
                                     <Form.Item name="department_id" label="แผนก" rules={[{ required: true, message: 'กรุณาเลือกแผนก' }]}>
                                         <Select 
                                             placeholder="เลือกแผนก"
@@ -898,7 +893,32 @@ export const Employees: React.FC = () => {
                                         </Select>
                                     </Form.Item>
                                 </Col>
-
+                            </Row>
+                            <Row gutter={16}>
+                                <Col span={12}>
+                                    <Form.Item name="joinDate" label="วันที่เริ่มปฏิบัติงาน" rules={[{ required: true, message: 'กรุณาเลือกวันที่' }]}>
+                                        <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+                                    </Form.Item>
+                                </Col>
+                                <Col span={12}>
+                                    <Form.Item
+                                        noStyle
+                                        shouldUpdate={(prevValues, currentValues) => prevValues.status !== currentValues.status}
+                                    >
+                                        {({ getFieldValue }) => (
+                                            <Form.Item
+                                                name="resignDate"
+                                                label="วันที่ลาออก"
+                                                rules={[{ 
+                                                    required: getFieldValue('status') === 'inactive', 
+                                                    message: 'กรุณาระบุวันที่ลาออก' 
+                                                }]}
+                                            >
+                                                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" disabled={getFieldValue('status') !== 'inactive'} />
+                                            </Form.Item>
+                                        )}
+                                    </Form.Item>
+                                </Col>
                             </Row>
                             <Row gutter={16}>
                                 <Col span={12}>
