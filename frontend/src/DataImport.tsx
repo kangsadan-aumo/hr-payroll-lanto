@@ -508,23 +508,39 @@ export const DataImport: React.FC = () => {
             sorter: (a: DbSummary, b: DbSummary) => a.workDays - b.workDays,
         },
         {
-            title: 'ลา/ขาดงาน (วัน)', key: 'leaveDays',
+            title: 'ลา/ขาดงาน', key: 'leaveDays',
             align: 'center' as const,
             render: (_: any, r: DbSummary) => {
                 const leaves = leaveRequests.filter(lr => lr.employee_name === r.name && (lr.status === 'approved' || lr.status === 'pending'));
                 const totalLeaves = leaves.reduce((sum, lr) => sum + Number(lr.total_days || 0), 0);
-                return <Tag color={totalLeaves > 0 ? 'volcano' : 'default'} style={{ fontWeight: 500, padding: '0 8px' }}>{totalLeaves > 0 ? `${totalLeaves} วัน` : '0'}</Tag>;
+                return (
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontWeight: 600, fontSize: 16, color: totalLeaves > 0 ? '#fa541c' : '#bfbfbf' }}>{totalLeaves}</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>วัน</div>
+                    </div>
+                );
             }
         },
         {
-            title: 'มาสายกี่วัน (นาที)', key: 'lateCount',
+            title: 'มาสาย (รวมนาที)', key: 'lateCount',
             align: 'center' as const,
             sorter: (a: DbSummary, b: DbSummary) => a.lateCount - b.lateCount,
-            render: (_: any, r: DbSummary) => (
-                r.lateCount > 0 
-                    ? <Tag color="orange" style={{ fontWeight: 500, padding: '0 8px' }}>{r.lateCount} วัน ({r.totalLateMinutes} นาที)</Tag> 
-                    : <Tag color="success" icon={<CheckCircleOutlined />}>ไม่สายเลย</Tag>
-            )
+            render: (_: any, r: DbSummary) => {
+                if (r.lateCount > 0) {
+                    return (
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{ fontWeight: 600, fontSize: 16, color: '#faad14' }}>{r.lateCount}</div>
+                            <div style={{ fontSize: 11, color: '#888' }}>วัน ({r.totalLateMinutes} นาที)</div>
+                        </div>
+                    );
+                }
+                return (
+                    <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontWeight: 600, fontSize: 16, color: '#52c41a' }}>0</div>
+                        <div style={{ fontSize: 11, color: '#888' }}>ไม่สายเลย</div>
+                    </div>
+                );
+            }
         },
         {
             title: 'ปฏิทิน', key: 'calendar',
