@@ -1002,18 +1002,23 @@ app.put('/api/settings', async (req, res) => {
             auto_deduct_tax = 0, 
             auto_deduct_sso = 0, 
             payroll_cutoff_date = 25, 
-            diligence_allowance = 0 
+            diligence_allowance = 0,
+            ot_formula_id = null,
+            late_formula_id = null,
+            leave_formula_id = null,
+            diligence_formula_id = null
         } = req.body;
         
         await pool.query(`
             INSERT INTO system_settings 
-            (id, company_name, tax_id, branch_code, address, deduct_excess_sick_leave, deduct_excess_personal_leave, late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, company_name, tax_id, branch_code, address, deduct_excess_sick_leave, deduct_excess_personal_leave, late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance, ot_formula_id, late_formula_id, leave_formula_id, diligence_formula_id)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 company_name=VALUES(company_name), tax_id=VALUES(tax_id), branch_code=VALUES(branch_code), address=VALUES(address),
                 deduct_excess_sick_leave=VALUES(deduct_excess_sick_leave), deduct_excess_personal_leave=VALUES(deduct_excess_personal_leave),
                 late_penalty_per_minute=VALUES(late_penalty_per_minute), auto_deduct_tax=VALUES(auto_deduct_tax), auto_deduct_sso=VALUES(auto_deduct_sso),
                 payroll_cutoff_date=VALUES(payroll_cutoff_date), diligence_allowance=VALUES(diligence_allowance),
+                ot_formula_id=VALUES(ot_formula_id), late_formula_id=VALUES(late_formula_id), leave_formula_id=VALUES(leave_formula_id), diligence_formula_id=VALUES(diligence_formula_id),
                 updated_at=CURRENT_TIMESTAMP
         `, [
             company_name, tax_id, branch_code, address, 
@@ -1023,7 +1028,8 @@ app.put('/api/settings', async (req, res) => {
             auto_deduct_tax ? 1 : 0, 
             auto_deduct_sso ? 1 : 0, 
             payroll_cutoff_date, 
-            diligence_allowance
+            diligence_allowance,
+            ot_formula_id, late_formula_id, leave_formula_id, diligence_formula_id
         ]);
             
         res.json({ message: 'Settings updated' });
@@ -1186,6 +1192,24 @@ app.get('/api/payroll', async (req, res) => {
 // ─────────────────────────────────────────────
 // 🧠 PAYROLL — CALCULATE & SAVE to payroll_records
 // ─────────────────────────────────────────────
+
+function evaluateFormula(expression, variables) {
+    if (!expression) return 0;
+    let evalStr = expression;
+    // Replace variables (e.g. [เงินเดือนฐาน])
+    for (const [key, value] of Object.entries(variables)) {
+        evalStr = evalStr.replace(new RegExp('\\\\[' + key + '\\\\]', 'g'), value);
+    }
+    // Remove any remaining unreplaced variables
+    evalStr = evalStr.replace(/\\[.*?\\]/g, '0');
+    try {
+        return Math.floor(Function(`'use strict'; return (${evalStr})`)());
+    } catch (e) {
+        console.error('Formula evaluation error:', e);
+        return 0;
+    }
+}
+
 app.post('/api/payroll/calculate', async (req, res) => {
     try {
         const month = parseInt(req.body.month) || dayjs().month() + 1;
@@ -1199,6 +1223,10 @@ app.post('/api/payroll/calculate', async (req, res) => {
         const latePenaltyPerMin = parseFloat(settings.late_penalty_per_minute || 0);
         const autoDeductTax = settings.auto_deduct_tax !== 0;
         const autoDeductSSO = settings.auto_deduct_sso !== 0;
+
+        const [formulaRows] = await pool.query('SELECT id, expression FROM payroll_formulas');
+        const formulaMap = {};
+        formulaRows.forEach(f => formulaMap[f.id] = f.expression);
 
         const [employees] = await pool.query(`
             SELECT e.id, e.employee_code, CONCAT(e.first_name, ' ', e.last_name) as name,
@@ -1257,24 +1285,52 @@ app.post('/api/payroll/calculate', async (req, res) => {
         for (const e of employees) {
             const baseSalary = parseFloat(e.base_salary || 0);
             
-            // OT Calculation
-            const empOt = otMap[e.id] || {};
-            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
-            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
-            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
-            const totalOT = ot1_5_pay + ot2_pay + ot3_pay;
-
-            // Health/Deductions
+            // Variables for Formula Evaluation
             const att = attendanceMap[e.id];
             const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
-            const latePenalty = Math.floor(lateMinutes * latePenaltyPerMin);
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
-            const unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
+            
+            const variables = {
+                'เงินเดือนฐาน': baseSalary,
+                'รายวัน': baseSalary / 30,
+                'วันทำงานจริง': 30 - unpaidDays,
+                'วันลา': unpaidDays,
+                'ชั่วโมง_OT': (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0),
+                'นาทีมาสาย': lateMinutes,
+                'เบี้ยขยันตั้งต้น': diligenceAllowance
+            };
+
+            // OT Calculation
+            const empOt = otMap[e.id] || {};
+            let ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
+            let ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
+            let ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            let totalOT = ot1_5_pay + ot2_pay + ot3_pay;
+
+            if (settings.ot_formula_id && formulaMap[settings.ot_formula_id]) {
+                totalOT = evaluateFormula(formulaMap[settings.ot_formula_id], variables);
+                ot1_5_pay = totalOT; ot2_pay = 0; ot3_pay = 0; // If using formula, aggregate it to 1.5 to not lose data
+            }
+
+            // Health/Deductions
+            let latePenalty = Math.floor(lateMinutes * latePenaltyPerMin);
+            if (settings.late_formula_id && formulaMap[settings.late_formula_id]) {
+                latePenalty = evaluateFormula(formulaMap[settings.late_formula_id], variables);
+            }
+
+            let unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
+            if (settings.leave_formula_id && formulaMap[settings.leave_formula_id]) {
+                unpaidLeaveDeduction = evaluateFormula(formulaMap[settings.leave_formula_id], variables);
+            }
 
             const cl = claimsMap[e.id];
             const totalClaims = cl ? parseFloat(cl.total_claims || 0) : 0;
-            const earnedDiligence = (lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
+            
+            let earnedDiligence = (lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
+            if (settings.diligence_formula_id && formulaMap[settings.diligence_formula_id]) {
+                earnedDiligence = evaluateFormula(formulaMap[settings.diligence_formula_id], variables);
+            }
 
             // PVF
             const pvfEmployee = Math.floor(baseSalary * (parseFloat(e.pvf_rate || 0) / 100));
@@ -2674,6 +2730,10 @@ async function runMigrations() {
             auto_deduct_sso TINYINT(1) DEFAULT 0,
             payroll_cutoff_date INT DEFAULT 25,
             diligence_allowance DECIMAL(10,2) DEFAULT 0.00,
+            ot_formula_id INT NULL,
+            late_formula_id INT NULL,
+            leave_formula_id INT NULL,
+            diligence_formula_id INT NULL,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
         `CREATE TABLE IF NOT EXISTS leave_quota_rules (

@@ -1,37 +1,79 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Row, Col, Card, Typography, Space, Input, message, Popconfirm, Divider } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, CalculatorOutlined } from '@ant-design/icons';
+import { Table, Button, Modal, Row, Col, Card, Typography, Space, Input, message, Popconfirm, Divider, Tabs, Form, Select } from 'antd';
+import { PlusOutlined, DeleteOutlined, EditOutlined, CalculatorOutlined, SettingOutlined, MoneyCollectOutlined, FallOutlined, SaveOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
 const { Title, Text } = Typography;
+const { TabPane } = Tabs;
 const API = 'http://localhost:5000/api';
 
 export const FormulaBuilder: React.FC = () => {
     const [formulas, setFormulas] = useState<any[]>([]);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const [loading, setLoading] = useState(false);
+    
+    // Mappings Form
+    const [mappingForm] = Form.useForm();
+    const [savingMapping, setSavingMapping] = useState(false);
 
     const [formulaId, setFormulaId] = useState<number | null>(null);
     const [formulaName, setFormulaName] = useState('');
     const [expression, setExpression] = useState('');
     const [description, setDescription] = useState('');
 
-    const fetchFormulas = async () => {
+    const fetchFormulasAndSettings = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API}/formulas`);
-            setFormulas(res.data);
+            const [formulasRes, settingsRes] = await Promise.all([
+                axios.get(`${API}/formulas`),
+                axios.get(`${API}/settings`)
+            ]);
+            setFormulas(formulasRes.data);
+            const s = settingsRes.data;
+            mappingForm.setFieldsValue({
+                ot_formula_id: s.ot_formula_id || null,
+                late_formula_id: s.late_formula_id || null,
+                leave_formula_id: s.leave_formula_id || null,
+                diligence_formula_id: s.diligence_formula_id || null
+            });
         } catch (err) {
-            console.error('Failed to fetch formulas', err);
-            message.error('โหลดข้อมูลสูตรคำนวณไม่สำเร็จ');
+            console.error('Failed to fetch data', err);
+            message.error('โหลดข้อมูลไม่สำเร็จ');
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchFormulas();
+        fetchFormulasAndSettings();
     }, []);
+
+    const onSaveMapping = async (values: any) => {
+        setSavingMapping(true);
+        try {
+            // Need to fetch current settings first to preserve other fields
+            const settingsRes = await axios.get(`${API}/settings`);
+            const s = settingsRes.data;
+            const payload = {
+                ...s,
+                company_name: s.company_name || '',
+                tax_id: s.tax_id || '',
+                branch_code: s.branch_code || '00000',
+                address: s.address || '',
+                ot_formula_id: values.ot_formula_id || null,
+                late_formula_id: values.late_formula_id || null,
+                leave_formula_id: values.leave_formula_id || null,
+                diligence_formula_id: values.diligence_formula_id || null
+            };
+            await axios.put(`${API}/settings`, payload);
+            message.success('บันทึกการผูกสูตรสำเร็จ');
+        } catch (err) {
+            console.error('Save mapping failed', err);
+            message.error('เกิดข้อผิดพลาดในการบันทึกการผูกสูตร');
+        } finally {
+            setSavingMapping(false);
+        }
+    };
 
     const openModal = (formula?: any) => {
         if (formula) {
@@ -56,16 +98,18 @@ export const FormulaBuilder: React.FC = () => {
             return message.warning('กรุณาสร้างสูตรคำนวณ');
         }
 
+        const payload = { name: formulaName, expression, description };
+
         try {
             if (formulaId) {
-                await axios.put(`${API}/formulas/${formulaId}`, { name: formulaName, expression, description });
-                message.success('แก้ไขสูตรเรียบร้อย');
+                await axios.put(`${API}/formulas/${formulaId}`, payload);
+                message.success('อัปเดตสูตรสำเร็จ');
             } else {
-                await axios.post(`${API}/formulas`, { name: formulaName, expression, description });
-                message.success('สร้างสูตรเรียบร้อย');
+                await axios.post(`${API}/formulas`, payload);
+                message.success('เพิ่มสูตรสำเร็จ');
             }
             setIsModalVisible(false);
-            fetchFormulas();
+            fetchFormulasAndSettings();
         } catch (err) {
             console.error('Save failed', err);
             message.error('บันทึกสูตรไม่สำเร็จ');
@@ -75,8 +119,8 @@ export const FormulaBuilder: React.FC = () => {
     const handleDelete = async (id: number) => {
         try {
             await axios.delete(`${API}/formulas/${id}`);
-            message.success('ลบสูตรเรียบร้อย');
-            fetchFormulas();
+            message.success('ลบสูตรสำเร็จ');
+            fetchFormulasAndSettings();
         } catch (err) {
             message.error('ลบสูตรไม่สำเร็จ');
         }
@@ -134,27 +178,110 @@ export const FormulaBuilder: React.FC = () => {
     return (
         <div style={{ padding: 24, background: '#f5f5f5', minHeight: '100vh' }}>
             <Card bordered={false} style={{ borderRadius: 8 }}>
-                <Row justify="space-between" align="middle" style={{ marginBottom: 24 }}>
-                    <Col>
-                        <Title level={4} style={{ margin: 0 }}>
-                            <CalculatorOutlined style={{ marginRight: 8, color: '#1890ff' }} />
-                            ตั้งค่าสูตรคำนวณเงินเดือน
-                        </Title>
-                    </Col>
-                    <Col>
-                        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()} size="large">
-                            เพิ่มสูตรใหม่
-                        </Button>
-                    </Col>
-                </Row>
-                
-                <Table
-                    columns={columns}
-                    dataSource={formulas}
-                    rowKey="id"
-                    loading={loading}
-                    pagination={{ pageSize: 10 }}
-                />
+                <Title level={3} style={{ marginBottom: 24 }}>
+                    <CalculatorOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+                    ระบบตั้งค่าและผูกสูตรคำนวณเงินเดือน
+                </Title>
+                <Tabs defaultActiveKey="1" size="large">
+                    {/* Tab 1: Formula Settings */}
+                    <TabPane tab={<span><CalculatorOutlined /> ตั้งค่าสูตร (Formulas)</span>} key="1">
+                        <div style={{ maxWidth: 1000, padding: '12px 0' }}>
+                            <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+                                <Col>
+                                    <Text type="secondary">สร้างและแก้ไขสูตรคำนวณ สำหรับนำไปใช้กับการคำนวณต่างๆ</Text>
+                                </Col>
+                                <Col>
+                                    <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()} size="middle">
+                                        เพิ่มสูตรใหม่
+                                    </Button>
+                                </Col>
+                            </Row>
+                            
+                            <Table
+                                columns={columns}
+                                dataSource={formulas}
+                                rowKey="id"
+                                loading={loading}
+                                pagination={{ pageSize: 10 }}
+                            />
+                        </div>
+                    </TabPane>
+
+                    {/* Tab 2: Formula Mappings */}
+                    <TabPane tab={<span><SettingOutlined /> ผูกสูตร (Mappings)</span>} key="2">
+                        <div style={{ maxWidth: 800, padding: '12px 0' }}>
+                            <Title level={4}>การผูกสูตรเข้ากับระบบเงินเดือน</Title>
+                            <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
+                                เลือกสูตรที่คุณสร้างไว้เพื่อนำมาคำนวณในระบบเงินเดือนโดยอัตโนมัติ หากไม่เลือก ระบบจะใช้การคำนวณพื้นฐาน
+                            </Text>
+
+                            <Form form={mappingForm} layout="vertical" onFinish={onSaveMapping}>
+                                <Row gutter={24}>
+                                    <Col span={12}>
+                                        <Form.Item name="ot_formula_id" label="สูตรคำนวณค่าล่วงเวลา (OT)">
+                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
+                                                {formulas.map(f => (
+                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
+                                                ))}
+                                            </Select>
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item name="late_formula_id" label="สูตรหักเงินมาสาย">
+                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
+                                                {formulas.map(f => (
+                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
+                                                ))}
+                                            </Select>
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+                                <Row gutter={24}>
+                                    <Col span={12}>
+                                        <Form.Item name="leave_formula_id" label="สูตรหักเงินการลางาน (Unpaid Leave)">
+                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
+                                                {formulas.map(f => (
+                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
+                                                ))}
+                                            </Select>
+                                        </Form.Item>
+                                    </Col>
+                                    <Col span={12}>
+                                        <Form.Item name="diligence_formula_id" label="สูตรคำนวณเบี้ยขยัน">
+                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
+                                                {formulas.map(f => (
+                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
+                                                ))}
+                                            </Select>
+                                        </Form.Item>
+                                    </Col>
+                                </Row>
+
+                                <Form.Item style={{ marginTop: 16 }}>
+                                    <Button type="primary" htmlType="submit" icon={<SaveOutlined />} size="large" loading={savingMapping}>
+                                        บันทึกการผูกสูตร
+                                    </Button>
+                                </Form.Item>
+                            </Form>
+                        </div>
+                    </TabPane>
+
+                    {/* Tab 3: Incomes Placeholder */}
+                    <TabPane tab={<span><MoneyCollectOutlined /> รายได้ (Incomes)</span>} key="3">
+                        <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                            <Title level={4} type="secondary">ฟีเจอร์นี้อยู่ระหว่างการพัฒนา</Title>
+                            <Text type="secondary">พื้นที่สำหรับเพิ่มประเภทรายได้ใหม่แบบกำหนดเอง (Custom Allowances)</Text>
+                        </div>
+                    </TabPane>
+
+                    {/* Tab 4: Deductions Placeholder */}
+                    <TabPane tab={<span><FallOutlined /> รายการหัก (Deductions)</span>} key="4">
+                        <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                            <Title level={4} type="secondary">ฟีเจอร์นี้อยู่ระหว่างการพัฒนา</Title>
+                            <Text type="secondary">พื้นที่สำหรับเพิ่มประเภทรายการหักใหม่แบบกำหนดเอง (Custom Deductions)</Text>
+                        </div>
+                    </TabPane>
+                </Tabs>
             </Card>
 
             <Modal
