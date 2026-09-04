@@ -322,6 +322,7 @@ export const Employees: React.FC = () => {
             'อีเมล': e.email,
             'เบอร์โทรศัพท์': e.phone,
             'วันที่เริ่มงาน': e.joinDate,
+            'ประเภทพนักงาน': e.employee_type_name || '-',
             'สถานะ': e.status === 'active' ? 'ใช้งาน' : 'ลาออก',
             'เงินเดือน': e.baseSalary,
             'ธนาคาร': e.bank_name,
@@ -388,7 +389,8 @@ export const Employees: React.FC = () => {
         emp.name.toLowerCase().includes(searchText.toLowerCase()) ||
         emp.id.includes(searchText) ||
         (emp.employee_code && emp.employee_code.includes(searchText)) ||
-        emp.department.toLowerCase().includes(searchText.toLowerCase())
+        emp.department.toLowerCase().includes(searchText.toLowerCase()) ||
+        (emp.employee_type_name && emp.employee_type_name.toLowerCase().includes(searchText.toLowerCase()))
     );
 
     const departments = Array.from(new Set(employees.map(e => e.department)));
@@ -525,7 +527,7 @@ export const Employees: React.FC = () => {
     const columns: TableProps<Employee>['columns'] = [
         { title: 'รหัสพนักงาน', dataIndex: 'employee_code', key: 'employee_code', width: 120, sorter: (a, b) => (a.employee_code || '').localeCompare(b.employee_code || '') },
         {
-            title: 'ชื่อ-นามสกุล', key: 'name',
+            title: 'ชื่อ-นามสกุล', key: 'name', width: 240,
             render: (_, record) => (
                 <Space>
                     <Avatar icon={<UserOutlined />} style={{ backgroundColor: record.status === 'active' ? '#1890ff' : '#d9d9d9' }} />
@@ -538,17 +540,37 @@ export const Employees: React.FC = () => {
             sorter: (a, b) => a.name.localeCompare(b.name)
         },
         {
-            title: 'แผนก', dataIndex: 'department', key: 'department',
+            title: 'แผนก', dataIndex: 'department', key: 'department', width: 120,
             filters: departments.map(d => ({ text: String(d), value: String(d) })),
             onFilter: (value, record) => record.department === value,
         },
         {
-            title: 'วันที่เริ่มงาน', dataIndex: 'joinDate', key: 'joinDate',
-            render: (date: string) => dayjs(date).format('DD MMM YYYY'),
+            title: 'วันที่เริ่มงาน', dataIndex: 'joinDate', key: 'joinDate', width: 130,
+            render: (date: string) => date ? dayjs(date).format('DD MMM YYYY') : '-',
             sorter: (a, b) => dayjs(a.joinDate).unix() - dayjs(b.joinDate).unix()
         },
         {
-            title: 'สถานะ', key: 'status',
+            title: 'ประเภทพนักงาน', dataIndex: 'employee_type_name', key: 'employee_type_name', width: 140,
+            filters: employeeTypesList.map(t => ({ text: t.name, value: t.name })),
+            onFilter: (value, record) => record.employee_type_name === value,
+            render: (typeName: string) => {
+                const isDaily = (typeName || '').includes('รายวัน') || (typeName || '').toLowerCase().includes('daily');
+                if (isDaily) {
+                    return <Tag color="blue" style={{ borderRadius: 12, padding: '1px 10px', fontWeight: 500 }}>รายวัน</Tag>;
+                }
+                const isMonthly = (typeName || '').includes('รายเดือน') || (typeName || '').toLowerCase().includes('monthly');
+                if (isMonthly) {
+                    return <Tag color="purple" style={{ borderRadius: 12, padding: '1px 10px', fontWeight: 500 }}>รายเดือน</Tag>;
+                }
+                return typeName && typeName !== 'ไม่ระบุ' ? (
+                    <Tag color="cyan" style={{ borderRadius: 12, padding: '1px 10px' }}>{typeName}</Tag>
+                ) : (
+                    <Text type="secondary">-</Text>
+                );
+            }
+        },
+        {
+            title: 'สถานะ', key: 'status', width: 120,
             filters: [{ text: 'พนักงานปัจจุบัน', value: 'active' }, { text: 'ลาออก', value: 'inactive' }],
             onFilter: (value, record) => record.status === value,
             render: (_, record) => record.status === 'active'
@@ -556,7 +578,7 @@ export const Employees: React.FC = () => {
                 : <Tag color="default" icon={<CloseCircleOutlined />}>ลาออก</Tag>
         },
         {
-            title: 'จัดการ', key: 'action', align: 'center',
+            title: 'จัดการ', key: 'action', align: 'center', width: 130,
             render: (_, record) => (
                 <Space size="middle">
                     <Tooltip title="ตั้งค่าวันลา">
@@ -705,7 +727,7 @@ export const Employees: React.FC = () => {
                 <Table
                     rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
                     columns={columns} dataSource={filteredEmployees} rowKey="id"
-                    loading={loading} pagination={{ pageSize: 15 }} scroll={{ x: 1000 }} bordered
+                    loading={loading} pagination={{ pageSize: 15 }} scroll={{ x: 1050 }} bordered
                 />
             </Card>
 

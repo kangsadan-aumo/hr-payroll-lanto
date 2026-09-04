@@ -13,10 +13,6 @@ import {
     MenuUnfoldOutlined,
     MenuFoldOutlined,
     HistoryOutlined,
-    AuditOutlined,
-    BarChartOutlined,
-    FileProtectOutlined,
-    ClockCircleOutlined,
     CalculatorOutlined,
 } from '@ant-design/icons';
 import './MainLayout.css';
@@ -36,18 +32,13 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
 
     const menuItems = [
         { key: 'dashboard', icon: <DashboardOutlined />, label: 'Dashboard (หน้าแรก)' },
-        { key: 'import', icon: <ImportOutlined />, label: 'นำเข้าข้อมูลเข้า-ออกงาน' },
         { key: 'employees', icon: <TeamOutlined />, label: 'จัดการพนักงาน' },
+        { key: 'import', icon: <ImportOutlined />, label: 'นำเข้าข้อมูลเข้า-ออกงาน' },
         { key: 'leave', icon: <CalendarOutlined />, label: 'อนุมัติการลา' },
         { key: 'hr-calendar', icon: <CalendarOutlined style={{ color: '#ff4d4f' }} />, label: 'ปฏิทินงาน HR' },
-        { key: 'claims', icon: <AuditOutlined />, label: 'สวัสดิการและเบิกจ่าย' },
         { key: 'payroll', icon: <DollarOutlined />, label: 'จัดการเงินเดือน' },
-        { key: 'formulas', icon: <CalculatorOutlined />, label: 'ตั้งค่าสูตรคำนวณ' },
         { key: 'payroll-history', icon: <HistoryOutlined />, label: 'ประวัติเงินเดือน' },
-        { key: 'overtime', icon: <ClockCircleOutlined />, label: 'จัดการค่าล่วงเวลา (OT)' },
-        { key: 'analytics', icon: <BarChartOutlined />, label: 'รายงานและวิเคราะห์' },
-        { key: 'audit-logs', icon: <HistoryOutlined style={{ color: '#ff7a45' }} />, label: 'ประวัติการใช้งาน (Logs)' },
-        { key: 'gov-reports', icon: <FileProtectOutlined />, label: 'รายงานรัฐบาล (Compliance)' },
+        { key: 'formulas', icon: <CalculatorOutlined />, label: 'ตั้งค่าสูตรคำนวณ' },
         { key: 'settings', icon: <SettingOutlined />, label: 'ตั้งค่าระบบ' },
     ];
 
