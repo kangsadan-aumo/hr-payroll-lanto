@@ -34,7 +34,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, activeMenu, on
         { key: 'dashboard', icon: <DashboardOutlined />, label: 'Dashboard (หน้าแรก)' },
         { key: 'employees', icon: <TeamOutlined />, label: 'จัดการพนักงาน' },
         { key: 'import', icon: <ImportOutlined />, label: 'นำเข้าข้อมูลเข้า-ออกงาน' },
-        { key: 'leave', icon: <CalendarOutlined />, label: 'อนุมัติการลา' },
+        { key: 'leave', icon: <CalendarOutlined />, label: 'การจัดการลา' },
         { key: 'hr-calendar', icon: <CalendarOutlined style={{ color: '#ff4d4f' }} />, label: 'ปฏิทินงาน HR' },
         { key: 'payroll', icon: <DollarOutlined />, label: 'จัดการเงินเดือน' },
         { key: 'payroll-history', icon: <HistoryOutlined />, label: 'ประวัติเงินเดือน' },
