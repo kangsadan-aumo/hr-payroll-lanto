@@ -1007,8 +1007,35 @@ export const Employees: React.FC = () => {
                             </Row>
                             <Row gutter={16}>
                                 <Col span={12}>
-                                    <Form.Item name="baseSalary" label="เงินเดือนพื้นฐาน (บาท)">
-                                        <Input type="number" placeholder="เช่น 25000" prefix="฿" />
+                                    <Form.Item
+                                        noStyle
+                                        shouldUpdate={(prevValues, currentValues) => prevValues.employee_type_id !== currentValues.employee_type_id}
+                                    >
+                                        {({ getFieldValue }) => {
+                                            const typeId = getFieldValue('employee_type_id');
+                                            const selectedType = employeeTypesList.find(t => t.id === typeId);
+                                            const isDaily = selectedType?.name?.includes('รายวัน') || selectedType?.name?.toLowerCase()?.includes('daily');
+                                            return (
+                                                <Form.Item
+                                                    name="baseSalary"
+                                                    label={
+                                                        <span>
+                                                            {isDaily ? 'ค่าจ้างรายวัน (บาท/วัน)' : 'เงินเดือนพื้นฐาน (บาท)'}
+                                                            {isDaily && <Tag color="cyan" style={{ marginLeft: 6 }}>คิดเงินตามวันทำงานจริง</Tag>}
+                                                        </span>
+                                                    }
+                                                    rules={[{ required: true, message: isDaily ? 'กรุณาระบุค่าจ้างรายวัน' : 'กรุณาระบุเงินเดือนพื้นฐาน' }]}
+                                                    extra={isDaily ? 'พนักงานรายวัน: ระบบจะนำค่าจ้างรายวันนี้คูณกับจำนวนวันที่มาทำงานจริงตามบันทึกเวลาเข้าออกงาน' : 'พนักงานรายเดือน: คำนวณเงินเดือนแบบเหมาจ่ายปกติ'}
+                                                >
+                                                    <Input
+                                                        type="number"
+                                                        placeholder={isDaily ? "เช่น 350, 500" : "เช่น 25000"}
+                                                        prefix="฿"
+                                                        suffix={isDaily ? "บาท / วัน" : "บาท / เดือน"}
+                                                    />
+                                                </Form.Item>
+                                            );
+                                        }}
                                     </Form.Item>
                                 </Col>
                                 <Col span={12}>

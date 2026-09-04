@@ -163,9 +163,11 @@ function calculateIncomeTax(baseSalary, allowances = {}) {
 // ─────────────────────────────────────────────
 // 💡 HELPER: คำนวณค่าล่วงเวลา (OT)
 // ─────────────────────────────────────────────
-function calculateOTPay(baseSalary, hours, multiplier) {
-    // ฐานคำนวณ: (เงินเดือน / 30 / 8) * ชั่วโมง * ตัวคูณ
-    const hourlyRate = baseSalary / 30 / 8;
+function calculateOTPay(baseSalary, hours, multiplier, isDaily = false, dailyRate = 0) {
+    if (!hours || hours <= 0) return 0;
+    // พนักงานรายวัน: ค่าจ้างรายวัน / 8 ชม.
+    // พนักงานรายเดือน: (เงินเดือน / 30 / 8 ชม.)
+    const hourlyRate = isDaily ? ((dailyRate || baseSalary) / 8) : (baseSalary / 30 / 8);
     return Math.floor(hourlyRate * hours * multiplier);
 }
 
@@ -1068,10 +1070,12 @@ app.get('/api/payroll', async (req, res) => {
         // ลองดึงจาก payroll_records ก่อน
         const [saved] = await pool.query(`
             SELECT pr.*, e.title, e.first_name, e.last_name, e.employee_code,
-                   d.name as department, e.base_salary as emp_base_salary
+                   d.name as department, e.base_salary as emp_base_salary,
+                   et.name as employee_type_name
             FROM payroll_records pr
             JOIN employees e ON pr.employee_id = e.id
             LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN employee_types et ON e.employee_type_id = et.id
             WHERE pr.period_month = ? AND pr.period_year = ?
             ORDER BY e.id ASC
         `, [month, year]);
@@ -1091,11 +1095,18 @@ app.get('/api/payroll', async (req, res) => {
                     }
                 } catch (e) { parsedCustomDeductions = []; }
 
+                const isDaily = Boolean(r.is_daily !== 0 && r.is_daily !== null) ||
+                    ((r.employee_type_name || '').includes('รายวัน') || (r.employee_type_name || '').toLowerCase().includes('daily'));
+
                 return {
                     employeeId: r.employee_code,
                     employee_id: r.employee_id,
                     name: `${r.title || ''} ${r.first_name || ''} ${r.last_name || ''}`.trim(),
                     department: r.department || 'ไม่ระบุ',
+                    employeeTypeName: r.employee_type_name || (isDaily ? 'พนักงานรายวัน' : 'พนักงานประจำ'),
+                    isDaily,
+                    workDays: parseInt(r.work_days || 0),
+                    dailyRate: parseFloat(r.daily_rate || 0),
                     baseSalary: parseFloat(r.base_salary),
                     earnings: {
                         overtime: parseFloat(r.overtime_pay || 0),
@@ -1144,9 +1155,11 @@ app.get('/api/payroll', async (req, res) => {
             SELECT e.id, e.employee_code, e.title, e.first_name, e.last_name,
                    d.name as department, e.base_salary, e.shift_id,
                    e.spouse_allowance, e.children_count, e.parents_care_count,
-                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate
+                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate,
+                   e.employee_type_id, et.name as employee_type_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN employee_types et ON e.employee_type_id = et.id
             WHERE e.status = 'active'
         `);
 
@@ -1156,7 +1169,7 @@ app.get('/api/payroll', async (req, res) => {
 
         const [attendanceLogs] = await pool.query(`
             SELECT employee_id, SUM(late_minutes) as total_late_minutes,
-                   COUNT(*) as work_days
+                   COUNT(DISTINCT DATE(check_in_time)) as work_days
             FROM attendance_logs
             WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
             GROUP BY employee_id
@@ -1189,18 +1202,24 @@ app.get('/api/payroll', async (req, res) => {
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
         const preview = employees.map(e => {
-            const baseSalary = parseFloat(e.base_salary || 0);
+            const isDaily = (e.employee_type_name || '').includes('รายวัน') || (e.employee_type_name || '').toLowerCase().includes('daily');
             const att = attendanceMap[e.id];
+            const workDays = att ? parseInt(att.work_days || 0) : 0;
+            const rawRate = parseFloat(e.base_salary || 0);
+            const dailyRate = isDaily ? rawRate : (rawRate / 30);
+            const calculatedBaseSalary = isDaily ? (rawRate * workDays) : rawRate;
+            const baseSalary = calculatedBaseSalary;
+
             const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
             const otHours = (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0);
 
             const variables = {
-                'เงินเดือนฐาน': baseSalary,
-                'รายวัน': baseSalary / 30,
-                'วันทำงานจริง': 30 - unpaidDays,
-                'วันลา': unpaidDays,
+                'เงินเดือนฐาน': calculatedBaseSalary,
+                'รายวัน': dailyRate,
+                'วันทำงานจริง': isDaily ? workDays : (30 - unpaidDays),
+                'วันลา': isDaily ? 0 : unpaidDays,
                 'ชั่วโมง_OT': otHours,
                 'นาทีมาสาย': lateMinutes,
                 'เบี้ยขยัน': diligenceAllowance,
@@ -1223,14 +1242,14 @@ app.get('/api/payroll', async (req, res) => {
 
             // OT
             const empOt = otMap[e.id] || {};
-            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
-            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
-            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            const ot1_5_pay = calculateOTPay(rawRate, empOt['1.5'] || 0, 1.5, isDaily, dailyRate);
+            const ot2_pay = calculateOTPay(rawRate, empOt['2.0'] || empOt['2'] || 0, 2.0, isDaily, dailyRate);
+            const ot3_pay = calculateOTPay(rawRate, empOt['3.0'] || empOt['3'] || 0, 3.0, isDaily, dailyRate);
             const totalOT = hasCustomOT ? 0 : (ot1_5_pay + ot2_pay + ot3_pay);
 
             // PVF
-            const pvfEmployee = Math.floor(baseSalary * (parseFloat(e.pvf_rate || 0) / 100));
-            const pvfEmployer = Math.floor(baseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
+            const pvfEmployee = Math.floor(calculatedBaseSalary * (parseFloat(e.pvf_rate || 0) / 100));
+            const pvfEmployer = Math.floor(calculatedBaseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
 
             // Evaluate Custom Deductions
             const customDeductionsList = [];
@@ -1248,25 +1267,29 @@ app.get('/api/payroll', async (req, res) => {
                 if (form.name.includes('ประกันสังคม')) hasCustomSSO = true;
             }
 
-            // ค่าปรับสาย & หักลา
+            // ค่าปรับสาย & หักลา (พนักงานรายวันไม่หักเงินวันลาซ้ำซ้อน เพราะจ่ายตามวันที่มาทำงานจริงอยู่แล้ว)
             const latePenalty = hasCustomLate ? 0 : Math.floor(lateMinutes * latePenaltyPerMin);
-            const unpaidLeaveDeduction = hasCustomLeave ? 0 : Math.floor((baseSalary / 30) * unpaidDays);
+            const unpaidLeaveDeduction = isDaily ? 0 : (hasCustomLeave ? 0 : Math.floor((rawRate / 30) * unpaidDays));
 
             // เบี้ยขยัน
             const earnedDiligence = hasCustomDiligence ? 0 : ((lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0);
 
             // ภาษี & SSO
-            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
-            const ssoDeduction = hasCustomSSO ? 0 : (autoDeductSSO ? calculateSSO(baseSalary) : 0);
+            const taxDeduction = autoDeductTax ? calculateIncomeTax(calculatedBaseSalary, e) : 0;
+            const ssoDeduction = hasCustomSSO ? 0 : (autoDeductSSO ? calculateSSO(calculatedBaseSalary) : 0);
 
-            const netSalary = baseSalary + totalOT + earnedDiligence + totalCustomIncomes - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee - totalCustomDeductions;
+            const netSalary = calculatedBaseSalary + totalOT + earnedDiligence + totalCustomIncomes - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee - totalCustomDeductions;
 
             return {
                 employeeId: e.employee_code,
                 employee_id: e.id,
                 name: `${e.title || ''} ${e.first_name || ''} ${e.last_name || ''}`.trim(),
                 department: e.department || 'ไม่ระบุ',
-                baseSalary,
+                employeeTypeName: e.employee_type_name || (isDaily ? 'พนักงานรายวัน' : 'พนักงานประจำ'),
+                isDaily,
+                workDays,
+                dailyRate: isDaily ? rawRate : 0,
+                baseSalary: calculatedBaseSalary,
                 earnings: { overtime: totalOT, bonus: 0, diligenceAllowance: earnedDiligence, ot1_5_pay, ot2_pay, ot3_pay },
                 deductions: { tax: taxDeduction, socialSecurity: ssoDeduction, latePenalty, unpaidLeave: unpaidLeaveDeduction, pvfEmployee },
                 customIncomes: customIncomesList,
@@ -1320,15 +1343,18 @@ app.post('/api/payroll/calculate', async (req, res) => {
             SELECT e.id, e.employee_code, CONCAT(e.first_name, ' ', e.last_name) as name,
                    d.name as department, e.base_salary,
                    e.spouse_allowance, e.children_count, e.parents_care_count,
-                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate
+                   e.health_insurance, e.life_insurance, e.pvf_rate, e.pvf_employer_rate,
+                   e.employee_type_id, et.name as employee_type_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN employee_types et ON e.employee_type_id = et.id
             WHERE e.status = 'active'
         `);
 
         // Fetch Data Maps
         const [attendanceLogs] = await pool.query(`
-            SELECT employee_id, SUM(late_minutes) as total_late_minutes
+            SELECT employee_id, SUM(late_minutes) as total_late_minutes,
+                   COUNT(DISTINCT DATE(check_in_time)) as work_days
             FROM attendance_logs
             WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
             GROUP BY employee_id
@@ -1371,20 +1397,25 @@ app.post('/api/payroll/calculate', async (req, res) => {
 
         let savedCount = 0;
         for (const e of employees) {
-            const baseSalary = parseFloat(e.base_salary || 0);
+            const isDaily = (e.employee_type_name || '').includes('รายวัน') || (e.employee_type_name || '').toLowerCase().includes('daily');
+            const att = attendanceMap[e.id];
+            const workDays = att ? parseInt(att.work_days || 0) : 0;
+            const rawRate = parseFloat(e.base_salary || 0);
+            const dailyRate = isDaily ? rawRate : (rawRate / 30);
+            const calculatedBaseSalary = isDaily ? (rawRate * workDays) : rawRate;
+            const baseSalary = calculatedBaseSalary;
             
             // Variables for Formula Evaluation
-            const att = attendanceMap[e.id];
             const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
             const otHours = (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0);
 
             const variables = {
-                'เงินเดือนฐาน': baseSalary,
-                'รายวัน': baseSalary / 30,
-                'วันทำงานจริง': 30 - unpaidDays,
-                'วันลา': unpaidDays,
+                'เงินเดือนฐาน': calculatedBaseSalary,
+                'รายวัน': dailyRate,
+                'วันทำงานจริง': isDaily ? workDays : (30 - unpaidDays),
+                'วันลา': isDaily ? 0 : unpaidDays,
                 'ชั่วโมง_OT': otHours,
                 'นาทีมาสาย': lateMinutes,
                 'เบี้ยขยัน': diligenceAllowance,
@@ -1405,11 +1436,11 @@ app.post('/api/payroll/calculate', async (req, res) => {
                 if (form.name.includes('เบี้ยขยัน')) hasCustomDiligence = true;
             }
 
-            // OT Calculation
+            // OT Calculation (คำนวณตามประเภทพนักงาน)
             const empOt = otMap[e.id] || {};
-            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
-            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
-            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            const ot1_5_pay = calculateOTPay(rawRate, empOt['1.5'] || 0, 1.5, isDaily, dailyRate);
+            const ot2_pay = calculateOTPay(rawRate, empOt['2.0'] || empOt['2'] || 0, 2.0, isDaily, dailyRate);
+            const ot3_pay = calculateOTPay(rawRate, empOt['3.0'] || empOt['3'] || 0, 3.0, isDaily, dailyRate);
             const totalOT = hasCustomOT ? 0 : (ot1_5_pay + ot2_pay + ot3_pay);
 
             // Health/Deductions & Custom Deductions
@@ -1428,8 +1459,9 @@ app.post('/api/payroll/calculate', async (req, res) => {
                 if (form.name.includes('ประกันสังคม')) hasCustomSSO = true;
             }
 
+            // ค่าปรับสาย & หักลา (พนักงานรายวันไม่หักค่าลา เพราะได้เงินตามวันทำงานจริง)
             const latePenalty = hasCustomLate ? 0 : Math.floor(lateMinutes * latePenaltyPerMin);
-            const unpaidLeaveDeduction = hasCustomLeave ? 0 : Math.floor((baseSalary / 30) * unpaidDays);
+            const unpaidLeaveDeduction = isDaily ? 0 : (hasCustomLeave ? 0 : Math.floor((rawRate / 30) * unpaidDays));
 
             const cl = claimsMap[e.id];
             const totalClaims = cl ? parseFloat(cl.total_claims || 0) : 0;
@@ -1437,14 +1469,14 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const earnedDiligence = hasCustomDiligence ? 0 : ((lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0);
 
             // PVF
-            const pvfEmployee = Math.floor(baseSalary * (parseFloat(e.pvf_rate || 0) / 100));
-            const pvfEmployer = Math.floor(baseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
+            const pvfEmployee = Math.floor(calculatedBaseSalary * (parseFloat(e.pvf_rate || 0) / 100));
+            const pvfEmployer = Math.floor(calculatedBaseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
             
             // Tax & SSO
-            const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
-            const ssoDeduction = hasCustomSSO ? 0 : (autoDeductSSO ? calculateSSO(baseSalary) : 0);
+            const taxDeduction = autoDeductTax ? calculateIncomeTax(calculatedBaseSalary, e) : 0;
+            const ssoDeduction = hasCustomSSO ? 0 : (autoDeductSSO ? calculateSSO(calculatedBaseSalary) : 0);
 
-            const totalGross = baseSalary + totalOT + earnedDiligence + totalClaims + totalCustomIncomes;
+            const totalGross = calculatedBaseSalary + totalOT + earnedDiligence + totalClaims + totalCustomIncomes;
             const totalDeductions = taxDeduction + ssoDeduction + latePenalty + unpaidLeaveDeduction + pvfEmployee + totalCustomDeductions;
             const netSalary = totalGross - totalDeductions;
 
@@ -1458,13 +1490,15 @@ app.post('/api/payroll/calculate', async (req, res) => {
                     (employee_id, period_month, period_year, base_salary, overtime_pay, bonus,
                      late_deduction, leave_deduction, tax_deduction, sso_deduction, diligence_allowance, claims_total, net_salary, 
                      pvf_employee_amount, pvf_employer_amount, ot_1_5_pay, ot_2_pay, ot_3_pay, 
-                     custom_incomes, custom_deductions, total_custom_incomes, total_custom_deductions, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+                     custom_incomes, custom_deductions, total_custom_incomes, total_custom_deductions,
+                     work_days, daily_rate, is_daily, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
             `, [
-                e.id, month, year, baseSalary, totalOT, 0, 
+                e.id, month, year, calculatedBaseSalary, totalOT, 0, 
                 latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, totalClaims, netSalary,
                 pvfEmployee, pvfEmployer, ot1_5_pay, ot2_pay, ot3_pay,
-                JSON.stringify(customIncomesList), JSON.stringify(customDeductionsList), totalCustomIncomes, totalCustomDeductions
+                JSON.stringify(customIncomesList), JSON.stringify(customDeductionsList), totalCustomIncomes, totalCustomDeductions,
+                workDays, isDaily ? rawRate : 0, isDaily ? 1 : 0
             ]);
             
             const payrollId = payrollRes.insertId;
@@ -2997,6 +3031,9 @@ async function runMigrations() {
     await ensureColumnExists('payroll_records', 'custom_deductions', "TEXT DEFAULT NULL");
     await ensureColumnExists('payroll_records', 'total_custom_incomes', "DECIMAL(10,2) DEFAULT 0.00");
     await ensureColumnExists('payroll_records', 'total_custom_deductions', "DECIMAL(10,2) DEFAULT 0.00");
+    await ensureColumnExists('payroll_records', 'work_days', "INT DEFAULT 0");
+    await ensureColumnExists('payroll_records', 'daily_rate', "DECIMAL(10,2) DEFAULT 0.00");
+    await ensureColumnExists('payroll_records', 'is_daily', "TINYINT(1) DEFAULT 0");
 
     // Seed Initial Data
     try {
@@ -3005,6 +3042,17 @@ async function runMigrations() {
         if (rows.length === 0) {
             await pool.query('INSERT INTO system_settings (id, company_name) VALUES (1, "My Company")');
             console.log('🌱 Seeded default system_settings');
+        }
+
+        // Seed Core Employee Types if empty
+        const [existingTypes] = await pool.query('SELECT id FROM employee_types LIMIT 1');
+        if (existingTypes.length === 0) {
+            await pool.query(`
+                INSERT INTO employee_types (name) VALUES
+                ('พนักงานประจำ (รายเดือน)'),
+                ('พนักงานรายวัน')
+            `);
+            console.log('🌱 Seeded default employee types');
         }
 
         // Seed Core Leave Types if missing (by Name)

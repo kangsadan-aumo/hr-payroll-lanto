@@ -31,6 +31,9 @@ interface PayrollRecord {
     name: string;
     department: string;
     baseSalary: number;
+    isDaily?: boolean;
+    workDays?: number;
+    dailyRate?: number;
     earnings: { overtime: number; bonus: number; diligenceAllowance?: number; };
     deductions: { tax: number; socialSecurity: number; latePenalty: number; unpaidLeave: number; };
     customIncomes?: CustomPayrollItem[];
@@ -296,8 +299,20 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
             )
         },
         {
-            title: 'เงินเดือนพื้นฐาน', dataIndex: 'baseSalary', key: 'baseSalary', align: 'right',
-            render: (value) => formatCurrency(value),
+            title: 'เงินเดือน / ค่าจ้างฐาน', dataIndex: 'baseSalary', key: 'baseSalary', align: 'right',
+            render: (value, record) => {
+                if (record.isDaily) {
+                    return (
+                        <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 600 }}>{formatCurrency(value)}</div>
+                            <div style={{ fontSize: 11, color: '#096dd9' }}>
+                                <Tag color="blue" style={{ fontSize: 10, marginRight: 2 }}>รายวัน</Tag> {record.workDays || 0} วัน × {formatCurrency(record.dailyRate || 0)}
+                            </div>
+                        </div>
+                    );
+                }
+                return formatCurrency(value);
+            },
             sorter: (a, b) => a.baseSalary - b.baseSalary,
         },
         {
@@ -491,7 +506,12 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                             <div className="payslip-col" style={{ flex: 1, padding: '10px 15px 10px 0', borderRight: '1px solid #eee' }}>
                                 <Text strong style={{ display: 'block', marginBottom: 8 }}>รายได้ (Earnings)</Text>
                                 {[
-                                    ['เงินเดือนพื้นฐาน', selectedEmployee.baseSalary],
+                                    [
+                                        selectedEmployee.isDaily
+                                            ? `ค่าจ้างรายวัน (${selectedEmployee.workDays || 0} วัน × ${formatCurrency(selectedEmployee.dailyRate || 0)})`
+                                            : 'เงินเดือนพื้นฐาน',
+                                        selectedEmployee.baseSalary
+                                    ],
                                     ...(selectedEmployee.earnings.overtime > 0 ? [['ค่าล่วงเวลา (OT)', selectedEmployee.earnings.overtime]] : []),
                                     ...(selectedEmployee.earnings.diligenceAllowance && selectedEmployee.earnings.diligenceAllowance > 0 ? [['เบี้ยขยัน', selectedEmployee.earnings.diligenceAllowance]] : []),
                                     ...(selectedEmployee.earnings.bonus > 0 ? [['โบนัส', selectedEmployee.earnings.bonus]] : []),
@@ -563,7 +583,10 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                     <>
                         <Alert
                             type="info" showIcon
-                            message={`เงินเดือนพื้นฐาน: ${formatCurrency(editingEmployee.baseSalary)}`}
+                            message={editingEmployee.isDaily
+                                ? `ค่าจ้างรายวัน: ${formatCurrency(editingEmployee.baseSalary)} (ทำงาน ${editingEmployee.workDays || 0} วัน @ ${formatCurrency(editingEmployee.dailyRate || 0)}/วัน)`
+                                : `เงินเดือนพื้นฐาน: ${formatCurrency(editingEmployee.baseSalary)}`
+                            }
                             description="การแก้ไขจะคำนวณยอดสุทธิ์ใหม่อัตโนมัติเมื่อส่งเงินเดือนพื้นฐาน + รายได้อื่นๆ - รายการหักทั้งหมด"
                             style={{ marginBottom: 20 }}
                         />
@@ -599,8 +622,10 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                             onClick={() => {
                                                 const h = otHelperHours || 0;
                                                 const r = otHelperRate || 1.5;
-                                                const base = editingEmployee?.baseSalary || 0;
-                                                const calculatedPay = (base / 30 / 8) * h * r;
+                                                const hourlyRate = editingEmployee?.isDaily
+                                                    ? ((editingEmployee.dailyRate || (editingEmployee.baseSalary / (editingEmployee.workDays || 1))) / 8)
+                                                    : (editingEmployee.baseSalary / 30 / 8);
+                                                const calculatedPay = hourlyRate * h * r;
                                                 editForm.setFieldsValue({ overtime_pay: Number(calculatedPay.toFixed(2)) });
                                                 message.success(`เติมค่าเงิน OT: ${calculatedPay.toFixed(2)} บาท`);
                                             }}
@@ -609,7 +634,9 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                         </Button>
                                     </Col>
                                 </Row>
-                                <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>* สูตร: (เงินเดือน ÷ 30 ÷ 8) × จำนวนชั่วโมง × ตัวคูณ</div>
+                                <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+                                    * สูตร: {editingEmployee?.isDaily ? '(ค่าจ้างรายวัน ÷ 8) × จำนวนชั่วโมง × ตัวคูณ' : '(เงินเดือน ÷ 30 ÷ 8) × จำนวนชั่วโมง × ตัวคูณ'}
+                                </div>
                             </div>
 
                             <Row gutter={16}>
