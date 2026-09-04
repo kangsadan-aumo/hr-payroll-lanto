@@ -1061,9 +1061,10 @@ app.get('/api/payroll', async (req, res) => {
     try {
         const month = parseInt(req.query.month) || dayjs().month() + 1;
         const year = parseInt(req.query.year) || dayjs().year();
+        const round = req.query.round !== undefined ? parseInt(req.query.round) : 1;
 
         // ลองดึงจาก payroll_records ก่อน
-        const [saved] = await pool.query(`
+        let savedSql = `
             SELECT pr.*, e.title, e.first_name, e.last_name, e.employee_code,
                    d.name as department, e.base_salary as emp_base_salary,
                    et.name as employee_type_name
@@ -1072,8 +1073,14 @@ app.get('/api/payroll', async (req, res) => {
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN employee_types et ON e.employee_type_id = et.id
             WHERE pr.period_month = ? AND pr.period_year = ?
-            ORDER BY e.id ASC
-        `, [month, year]);
+        `;
+        const savedParams = [month, year];
+        if (round > 0) {
+            savedSql += ` AND (pr.period_round = ? OR pr.period_round IS NULL OR pr.period_round = 0)`;
+            savedParams.push(round);
+        }
+        savedSql += ` ORDER BY e.id ASC`;
+        const [saved] = await pool.query(savedSql, savedParams);
 
         if (saved.length > 0) {
             const result = saved.map(r => {
@@ -1103,6 +1110,7 @@ app.get('/api/payroll', async (req, res) => {
                     workDays: parseInt(r.work_days || 0),
                     dailyRate: parseFloat(r.daily_rate || 0),
                     baseSalary: parseFloat(r.base_salary),
+                    baseSalaryFormula: r.base_salary_formula || (r.period_round && r.period_round > 0 ? `งวดที่ ${r.period_round}` : undefined),
                     earnings: {
                         overtime: parseFloat(r.overtime_pay || 0),
                         bonus: parseFloat(r.bonus || 0),
@@ -1120,7 +1128,8 @@ app.get('/api/payroll', async (req, res) => {
                     totalCustomDeductions: parseFloat(r.total_custom_deductions || 0),
                     netSalary: parseFloat(r.net_salary),
                     status: r.status,
-                    period: { month, year },
+                    periodRound: r.period_round || round,
+                    period: { month, year, round: r.period_round || round },
                 };
             });
             return res.json(result);
@@ -1138,7 +1147,7 @@ app.get('/api/payroll', async (req, res) => {
         let incomeFormulas = [];
         let deductionFormulas = [];
         try {
-            const [inf] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'income' AND is_active = 1");
+            const [inf] = await pool.query("SELECT * FROM payroll_formulas WHERE (type = 'income' OR type = 'base_salary') AND is_active = 1");
             incomeFormulas = inf;
             const [def] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'deduction' AND is_active = 1");
             deductionFormulas = def;
@@ -1158,26 +1167,50 @@ app.get('/api/payroll', async (req, res) => {
             WHERE e.status = 'active'
         `);
 
-        // ดึง attendance และ OT
+        // ดึง attendance และ OT ตามรอบ
         const monthStr = String(month).padStart(2, '0');
         const yearStr = String(year);
+        const cutoff1 = parseInt(settings.payroll_cutoff_date) || 15;
+        const cutoff2 = parseInt(settings.payroll_cutoff_date_2) || 30;
 
-        const [attendanceLogs] = await pool.query(`
+        let attSql = `
             SELECT employee_id, SUM(late_minutes) as total_late_minutes,
                    COUNT(DISTINCT DATE(check_in_time)) as work_days
             FROM attendance_logs
             WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
-            GROUP BY employee_id
-        `, [monthStr, yearStr]);
+        `;
+        const attParams = [monthStr, yearStr];
+        if (settings.payroll_rounds === 2 && round > 0) {
+            if (round === 1) {
+                attSql += ` AND DAY(check_in_time) <= ?`;
+                attParams.push(cutoff1);
+            } else if (round === 2) {
+                attSql += ` AND DAY(check_in_time) > ? AND DAY(check_in_time) <= ?`;
+                attParams.push(cutoff1, cutoff2);
+            }
+        }
+        attSql += ` GROUP BY employee_id`;
+        const [attendanceLogs] = await pool.query(attSql, attParams);
         const attendanceMap = {};
         attendanceLogs.forEach(a => { attendanceMap[a.employee_id] = a; });
 
-        const [otLogs] = await pool.query(`
+        let otSql = `
             SELECT employee_id, multiplier, SUM(hours) as total_hours
             FROM overtime_requests
             WHERE status = 'approved' AND DATE_FORMAT(date, '%m') = ? AND DATE_FORMAT(date, '%Y') = ?
-            GROUP BY employee_id, multiplier
-        `, [monthStr, yearStr]);
+        `;
+        const otParams = [monthStr, yearStr];
+        if (settings.payroll_rounds === 2 && round > 0) {
+            if (round === 1) {
+                otSql += ` AND DAY(date) <= ?`;
+                otParams.push(cutoff1);
+            } else if (round === 2) {
+                otSql += ` AND DAY(date) > ? AND DAY(date) <= ?`;
+                otParams.push(cutoff1, cutoff2);
+            }
+        }
+        otSql += ` GROUP BY employee_id, multiplier`;
+        const [otLogs] = await pool.query(otSql, otParams);
         const otMap = {};
         otLogs.forEach(o => {
             if (!otMap[o.employee_id]) otMap[o.employee_id] = {};
@@ -1185,14 +1218,25 @@ app.get('/api/payroll', async (req, res) => {
         });
 
         // ดึง unpaid leave
-        const [unpaidLeaves] = await pool.query(`
+        let leaveSql = `
             SELECT lr.employee_id, SUM(lr.total_days) as unpaid_days
             FROM leave_requests lr
             JOIN leave_types lt ON lr.leave_type_id = lt.id
             WHERE lt.is_unpaid = 1 AND lr.status = 'approved'
               AND DATE_FORMAT(lr.start_date, '%m') = ? AND DATE_FORMAT(lr.start_date, '%Y') = ?
-            GROUP BY lr.employee_id
-        `, [monthStr, yearStr]);
+        `;
+        const leaveParams = [monthStr, yearStr];
+        if (settings.payroll_rounds === 2 && round > 0) {
+            if (round === 1) {
+                leaveSql += ` AND DAY(lr.start_date) <= ?`;
+                leaveParams.push(cutoff1);
+            } else if (round === 2) {
+                leaveSql += ` AND DAY(lr.start_date) > ? AND DAY(lr.start_date) <= ?`;
+                leaveParams.push(cutoff1, cutoff2);
+            }
+        }
+        leaveSql += ` GROUP BY lr.employee_id`;
+        const [unpaidLeaves] = await pool.query(leaveSql, leaveParams);
         const leaveMap = {};
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
@@ -1202,8 +1246,7 @@ app.get('/api/payroll', async (req, res) => {
             const workDays = att ? parseInt(att.work_days || 0) : 0;
             const rawRate = parseFloat(e.base_salary || 0);
             const dailyRate = isDaily ? rawRate : (rawRate / 30);
-            const calculatedBaseSalary = isDaily ? (rawRate * workDays) : rawRate;
-            const baseSalary = calculatedBaseSalary;
+            let calculatedBaseSalary = isDaily ? (rawRate * workDays) : rawRate;
 
             const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
             const lv = leaveMap[e.id];
@@ -1211,7 +1254,7 @@ app.get('/api/payroll', async (req, res) => {
             const otHours = (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0);
 
             const variables = {
-                'เงินเดือนฐาน': calculatedBaseSalary,
+                'เงินเดือนฐาน': rawRate,
                 'รายวัน': dailyRate,
                 'วันทำงานจริง': isDaily ? workDays : (30 - unpaidDays),
                 'วันลา': isDaily ? 0 : unpaidDays,
@@ -1221,18 +1264,36 @@ app.get('/api/payroll', async (req, res) => {
                 'เบี้ยขยันตั้งต้น': diligenceAllowance
             };
 
-            // Evaluate Custom Incomes
+            // Evaluate Custom Incomes & Base Salary Formulas
             const customIncomesList = [];
             let totalCustomIncomes = 0;
             let hasCustomOT = false;
             let hasCustomDiligence = false;
+            let customBaseSalary = null;
+            let baseSalaryFormulaName = '';
 
             for (const form of incomeFormulas) {
                 const amt = evaluateFormula(form.expression, variables);
+                const isBaseSalaryFormula = form.type === 'base_salary' || 
+                                            form.name.includes('เงินเดือนรายวิก') || 
+                                            form.name.includes('รายวิก') || 
+                                            (form.name.includes('เงินเดือน') && (form.expression.includes('/') || form.type === 'base_salary'));
+                if (isBaseSalaryFormula) {
+                    customBaseSalary = amt;
+                    baseSalaryFormulaName = form.name;
+                    continue; // ❌ ไม่นำไปบวกเป็นรายได้อื่นๆ ซ้ำซ้อน
+                }
                 customIncomesList.push({ id: form.id, name: form.name, amount: amt });
                 totalCustomIncomes += amt;
                 if (form.name.includes('โอที') || form.name.toLowerCase().includes('ot')) hasCustomOT = true;
                 if (form.name.includes('เบี้ยขยัน')) hasCustomDiligence = true;
+            }
+
+            if (customBaseSalary !== null) {
+                calculatedBaseSalary = customBaseSalary;
+            } else if (settings.payroll_rounds === 2 && (round === 1 || round === 2) && !isDaily) {
+                calculatedBaseSalary = Math.round((rawRate / 2) * 100) / 100;
+                baseSalaryFormulaName = `จ่ายรายวิก (งวดที่ ${round}/2)`;
             }
 
             // OT
@@ -1262,7 +1323,7 @@ app.get('/api/payroll', async (req, res) => {
                 if (form.name.includes('ประกันสังคม')) hasCustomSSO = true;
             }
 
-            // ค่าปรับสาย & หักลา (พนักงานรายวันไม่หักเงินวันลาซ้ำซ้อน เพราะจ่ายตามวันที่มาทำงานจริงอยู่แล้ว)
+            // ค่าปรับสาย & หักลา
             const latePenalty = hasCustomLate ? 0 : Math.floor(lateMinutes * latePenaltyPerMin);
             const unpaidLeaveDeduction = isDaily ? 0 : (hasCustomLeave ? 0 : Math.floor((rawRate / 30) * unpaidDays));
 
@@ -1285,6 +1346,7 @@ app.get('/api/payroll', async (req, res) => {
                 workDays,
                 dailyRate: isDaily ? rawRate : 0,
                 baseSalary: calculatedBaseSalary,
+                baseSalaryFormula: baseSalaryFormulaName || undefined,
                 earnings: { overtime: totalOT, bonus: 0, diligenceAllowance: earnedDiligence, ot1_5_pay, ot2_pay, ot3_pay },
                 deductions: { tax: taxDeduction, socialSecurity: ssoDeduction, latePenalty, unpaidLeave: unpaidLeaveDeduction, pvfEmployee },
                 customIncomes: customIncomesList,
@@ -1294,7 +1356,8 @@ app.get('/api/payroll', async (req, res) => {
                 pvfEmployer,
                 netSalary,
                 status: 'draft',
-                period: { month, year },
+                periodRound: round,
+                period: { month, year, round },
                 isPreview: true,
             };
         });
@@ -1312,6 +1375,7 @@ app.post('/api/payroll/calculate', async (req, res) => {
     try {
         const month = parseInt(req.body.month) || dayjs().month() + 1;
         const year = parseInt(req.body.year) || dayjs().year();
+        const round = req.body.round !== undefined ? parseInt(req.body.round) : 1;
         const monthStr = String(month).padStart(2, '0');
         const yearStr = String(year);
 
@@ -1321,12 +1385,14 @@ app.post('/api/payroll/calculate', async (req, res) => {
         const latePenaltyPerMin = parseFloat(settings.late_penalty_per_minute || 0);
         const autoDeductTax = settings.auto_deduct_tax !== 0;
         const autoDeductSSO = settings.auto_deduct_sso !== 0;
+        const cutoff1 = parseInt(settings.payroll_cutoff_date) || 15;
+        const cutoff2 = parseInt(settings.payroll_cutoff_date_2) || 30;
 
-        // ดึงสูตรประเภทรายได้และรายหักที่เปิดใช้งาน
+        // ดึงสูตรประเภทรายได้, รายหัก และสูตรเงินเดือนฐานที่เปิดใช้งาน
         let incomeFormulas = [];
         let deductionFormulas = [];
         try {
-            const [inf] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'income' AND is_active = 1");
+            const [inf] = await pool.query("SELECT * FROM payroll_formulas WHERE (type = 'income' OR type = 'base_salary') AND is_active = 1");
             incomeFormulas = inf;
             const [def] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'deduction' AND is_active = 1");
             deductionFormulas = def;
@@ -1346,47 +1412,91 @@ app.post('/api/payroll/calculate', async (req, res) => {
             WHERE e.status = 'active'
         `);
 
-        // Fetch Data Maps
-        const [attendanceLogs] = await pool.query(`
+        // Fetch Data Maps ตามรอบ
+        let attSql = `
             SELECT employee_id, SUM(late_minutes) as total_late_minutes,
                    COUNT(DISTINCT DATE(check_in_time)) as work_days
             FROM attendance_logs
             WHERE DATE_FORMAT(check_in_time, '%m') = ? AND DATE_FORMAT(check_in_time, '%Y') = ?
-            GROUP BY employee_id
-        `, [monthStr, yearStr]);
+        `;
+        const attParams = [monthStr, yearStr];
+        if (settings.payroll_rounds === 2 && round > 0) {
+            if (round === 1) {
+                attSql += ` AND DAY(check_in_time) <= ?`;
+                attParams.push(cutoff1);
+            } else if (round === 2) {
+                attSql += ` AND DAY(check_in_time) > ? AND DAY(check_in_time) <= ?`;
+                attParams.push(cutoff1, cutoff2);
+            }
+        }
+        attSql += ` GROUP BY employee_id`;
+        const [attendanceLogs] = await pool.query(attSql, attParams);
         const attendanceMap = {};
         attendanceLogs.forEach(a => { attendanceMap[a.employee_id] = a; });
 
-        const [otLogs] = await pool.query(`
+        let otSql = `
             SELECT employee_id, multiplier, SUM(hours) as total_hours
             FROM overtime_requests
             WHERE status = 'approved' AND DATE_FORMAT(date, '%m') = ? AND DATE_FORMAT(date, '%Y') = ?
-            GROUP BY employee_id, multiplier
-        `, [monthStr, yearStr]);
+        `;
+        const otParams = [monthStr, yearStr];
+        if (settings.payroll_rounds === 2 && round > 0) {
+            if (round === 1) {
+                otSql += ` AND DAY(date) <= ?`;
+                otParams.push(cutoff1);
+            } else if (round === 2) {
+                otSql += ` AND DAY(date) > ? AND DAY(date) <= ?`;
+                otParams.push(cutoff1, cutoff2);
+            }
+        }
+        otSql += ` GROUP BY employee_id, multiplier`;
+        const [otLogs] = await pool.query(otSql, otParams);
         const otMap = {};
         otLogs.forEach(o => {
             if (!otMap[o.employee_id]) otMap[o.employee_id] = {};
             otMap[o.employee_id][o.multiplier] = parseFloat(o.total_hours);
         });
 
-        const [claims] = await pool.query(`
+        let claimsSql = `
             SELECT employee_id, SUM(amount) as total_claims
             FROM claims
             WHERE status = 'approved' AND payroll_id IS NULL
               AND DATE_FORMAT(receipt_date, '%m') = ? AND DATE_FORMAT(receipt_date, '%Y') = ?
-            GROUP BY employee_id
-        `, [monthStr, yearStr]);
+        `;
+        const claimsParams = [monthStr, yearStr];
+        if (settings.payroll_rounds === 2 && round > 0) {
+            if (round === 1) {
+                claimsSql += ` AND DAY(receipt_date) <= ?`;
+                claimsParams.push(cutoff1);
+            } else if (round === 2) {
+                claimsSql += ` AND DAY(receipt_date) > ? AND DAY(receipt_date) <= ?`;
+                claimsParams.push(cutoff1, cutoff2);
+            }
+        }
+        claimsSql += ` GROUP BY employee_id`;
+        const [claims] = await pool.query(claimsSql, claimsParams);
         const claimsMap = {};
         claims.forEach(c => { claimsMap[c.employee_id] = c; });
 
-        const [unpaidLeaves] = await pool.query(`
+        let leaveSql = `
             SELECT lr.employee_id, SUM(lr.total_days) as unpaid_days
             FROM leave_requests lr
             JOIN leave_types lt ON lr.leave_type_id = lt.id
             WHERE lt.is_unpaid = 1 AND lr.status = 'approved'
               AND DATE_FORMAT(lr.start_date, '%m') = ? AND DATE_FORMAT(lr.start_date, '%Y') = ?
-            GROUP BY lr.employee_id
-        `, [monthStr, yearStr]);
+        `;
+        const leaveParams = [monthStr, yearStr];
+        if (settings.payroll_rounds === 2 && round > 0) {
+            if (round === 1) {
+                leaveSql += ` AND DAY(lr.start_date) <= ?`;
+                leaveParams.push(cutoff1);
+            } else if (round === 2) {
+                leaveSql += ` AND DAY(lr.start_date) > ? AND DAY(lr.start_date) <= ?`;
+                leaveParams.push(cutoff1, cutoff2);
+            }
+        }
+        leaveSql += ` GROUP BY lr.employee_id`;
+        const [unpaidLeaves] = await pool.query(leaveSql, leaveParams);
         const leaveMap = {};
         unpaidLeaves.forEach(l => { leaveMap[l.employee_id] = l; });
 
@@ -1397,9 +1507,8 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const workDays = att ? parseInt(att.work_days || 0) : 0;
             const rawRate = parseFloat(e.base_salary || 0);
             const dailyRate = isDaily ? rawRate : (rawRate / 30);
-            const calculatedBaseSalary = isDaily ? (rawRate * workDays) : rawRate;
-            const baseSalary = calculatedBaseSalary;
-            
+            let calculatedBaseSalary = isDaily ? (rawRate * workDays) : rawRate;
+
             // Variables for Formula Evaluation
             const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
             const lv = leaveMap[e.id];
@@ -1407,7 +1516,7 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const otHours = (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0);
 
             const variables = {
-                'เงินเดือนฐาน': calculatedBaseSalary,
+                'เงินเดือนฐาน': rawRate,
                 'รายวัน': dailyRate,
                 'วันทำงานจริง': isDaily ? workDays : (30 - unpaidDays),
                 'วันลา': isDaily ? 0 : unpaidDays,
@@ -1417,18 +1526,36 @@ app.post('/api/payroll/calculate', async (req, res) => {
                 'เบี้ยขยันตั้งต้น': diligenceAllowance
             };
 
-            // Evaluate Custom Incomes
+            // Evaluate Custom Incomes & Base Salary Formulas
             const customIncomesList = [];
             let totalCustomIncomes = 0;
             let hasCustomOT = false;
             let hasCustomDiligence = false;
+            let customBaseSalary = null;
+            let baseSalaryFormulaName = '';
 
             for (const form of incomeFormulas) {
                 const amt = evaluateFormula(form.expression, variables);
+                const isBaseSalaryFormula = form.type === 'base_salary' || 
+                                            form.name.includes('เงินเดือนรายวิก') || 
+                                            form.name.includes('รายวิก') || 
+                                            (form.name.includes('เงินเดือน') && (form.expression.includes('/') || form.type === 'base_salary'));
+                if (isBaseSalaryFormula) {
+                    customBaseSalary = amt;
+                    baseSalaryFormulaName = form.name;
+                    continue; // ❌ ไม่นำไปบวกเป็นรายได้อื่นๆ ซ้ำซ้อน!
+                }
                 customIncomesList.push({ id: form.id, name: form.name, amount: amt });
                 totalCustomIncomes += amt;
                 if (form.name.includes('โอที') || form.name.toLowerCase().includes('ot')) hasCustomOT = true;
                 if (form.name.includes('เบี้ยขยัน')) hasCustomDiligence = true;
+            }
+
+            if (customBaseSalary !== null) {
+                calculatedBaseSalary = customBaseSalary;
+            } else if (settings.payroll_rounds === 2 && (round === 1 || round === 2) && !isDaily) {
+                calculatedBaseSalary = Math.round((rawRate / 2) * 100) / 100;
+                baseSalaryFormulaName = `จ่ายรายวิก (งวดที่ ${round}/2)`;
             }
 
             // OT Calculation (คำนวณตามประเภทพนักงาน)
@@ -1475,21 +1602,21 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const totalDeductions = taxDeduction + ssoDeduction + latePenalty + unpaidLeaveDeduction + pvfEmployee + totalCustomDeductions;
             const netSalary = totalGross - totalDeductions;
 
-            // Upsert
+            // Upsert (ลบของเดิมเฉพาะงวดนั้นๆ)
             await pool.query(
-                'DELETE FROM payroll_records WHERE employee_id=? AND period_month=? AND period_year=?',
-                [e.id, month, year]
+                'DELETE FROM payroll_records WHERE employee_id=? AND period_month=? AND period_year=? AND (period_round=? OR ?=0)',
+                [e.id, month, year, round, round]
             );
             const [payrollRes] = await pool.query(`
                 INSERT INTO payroll_records 
-                    (employee_id, period_month, period_year, base_salary, overtime_pay, bonus,
+                    (employee_id, period_month, period_year, period_round, base_salary, base_salary_formula, overtime_pay, bonus,
                      late_deduction, leave_deduction, tax_deduction, sso_deduction, diligence_allowance, claims_total, net_salary, 
                      pvf_employee_amount, pvf_employer_amount, ot_1_5_pay, ot_2_pay, ot_3_pay, 
                      custom_incomes, custom_deductions, total_custom_incomes, total_custom_deductions,
                      work_days, daily_rate, is_daily, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
             `, [
-                e.id, month, year, calculatedBaseSalary, totalOT, 0, 
+                e.id, month, year, round || 1, calculatedBaseSalary, baseSalaryFormulaName || null, totalOT, 0, 
                 latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, totalClaims, netSalary,
                 pvfEmployee, pvfEmployer, ot1_5_pay, ot2_pay, ot3_pay,
                 JSON.stringify(customIncomesList), JSON.stringify(customDeductionsList), totalCustomIncomes, totalCustomDeductions,
@@ -1507,7 +1634,7 @@ app.post('/api/payroll/calculate', async (req, res) => {
             savedCount++;
         }
 
-        res.json({ message: `คำนวณเงินเดือนเสร็จแล้ว บันทึก ${savedCount} รายการ`, month, year, count: savedCount });
+        res.json({ message: `คำนวณเงินเดือนเสร็จแล้ว บันทึก ${savedCount} รายการ`, month, year, round, count: savedCount });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1518,9 +1645,10 @@ app.post('/api/payroll/calculate', async (req, res) => {
 // ─────────────────────────────────────────────
 app.put('/api/payroll/approve', async (req, res) => {
     try {
-        const { employee_codes, month, year } = req.body;
+        const { employee_codes, month, year, round = 1 } = req.body;
         const m = parseInt(month) || dayjs().month() + 1;
         const y = parseInt(year) || dayjs().year();
+        const r = parseInt(round) || 1;
 
         if (!employee_codes || employee_codes.length === 0) {
             return res.status(400).json({ error: 'No employees selected' });
@@ -1530,24 +1658,23 @@ app.put('/api/payroll/approve', async (req, res) => {
             `SELECT id FROM employees WHERE employee_code IN (${employee_codes.map(() => '?').join(',')})`,
             employee_codes
         );
-        const empIds = empRows.map(r => r.id);
+        const empIds = empRows.map(row => row.id);
 
         if (empIds.length === 0) return res.status(404).json({ error: 'No employees found' });
 
         await pool.query(
-            `UPDATE payroll_records SET status='paid' WHERE employee_id IN (${empIds.map(() => '?').join(',')}) AND period_month=? AND period_year=?`,
-            [...empIds, m, y]
+            `UPDATE payroll_records SET status='paid' WHERE employee_id IN (${empIds.map(() => '?').join(',')}) AND period_month=? AND period_year=? AND (period_round=? OR ?=0)`,
+            [...empIds, m, y, r, r]
         );
 
         // ── 📧 SEND EMAIL NOTIFICATIONS 📧 ──
-        // (Optional: In production, use a background worker/queue)
         try {
             const [records] = await pool.query(
                 `SELECT pr.*, e.first_name, e.last_name, e.email 
                  FROM payroll_records pr 
                  JOIN employees e ON pr.employee_id = e.id 
-                 WHERE pr.employee_id IN (${empIds.map(() => '?').join(',')}) AND pr.period_month=? AND pr.period_year=?`,
-                [...empIds, m, y]
+                 WHERE pr.employee_id IN (${empIds.map(() => '?').join(',')}) AND pr.period_month=? AND pr.period_year=? AND (pr.period_round=? OR ?=0)`,
+                [...empIds, m, y, r, r]
             );
 
             for (const rec of records) {
@@ -3037,6 +3164,23 @@ async function runMigrations() {
     await ensureColumnExists('payroll_records', 'work_days', "INT DEFAULT 0");
     await ensureColumnExists('payroll_records', 'daily_rate', "DECIMAL(10,2) DEFAULT 0.00");
     await ensureColumnExists('payroll_records', 'is_daily', "TINYINT(1) DEFAULT 0");
+    await ensureColumnExists('payroll_records', 'period_round', 'INT DEFAULT 1');
+    await ensureColumnExists('payroll_records', 'base_salary_formula', 'VARCHAR(100) DEFAULT NULL');
+
+    // Safe Index Migration for payroll_records (emp_month_year_round)
+    try {
+        const [indexes] = await pool.query(`SHOW INDEX FROM payroll_records WHERE Column_name = 'period_round'`);
+        if (indexes.length === 0) {
+            const [allIndexes] = await pool.query(`SHOW INDEX FROM payroll_records WHERE Key_name != 'PRIMARY'`);
+            const uniqueKeys = new Set(allIndexes.filter(i => i.Non_unique === 0).map(i => i.Key_name));
+            for (const keyName of uniqueKeys) {
+                try {
+                    await pool.query(`ALTER TABLE payroll_records DROP INDEX \`${keyName}\``);
+                } catch (e) {}
+            }
+            await pool.query(`ALTER TABLE payroll_records ADD UNIQUE KEY emp_month_year_round (employee_id, period_month, period_year, period_round)`);
+        }
+    } catch (e) {}
 
     // Seed Initial Data
     try {

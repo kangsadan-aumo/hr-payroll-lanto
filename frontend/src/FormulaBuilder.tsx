@@ -19,7 +19,7 @@ interface Formula {
     name: string;
     expression: string;
     description: string;
-    type: 'income' | 'deduction' | 'general';
+    type: 'income' | 'deduction' | 'base_salary' | 'general';
     is_active: number | boolean;
     created_at?: string;
     updated_at?: string;
@@ -36,7 +36,7 @@ export const FormulaBuilder: React.FC = () => {
     const [formulaName, setFormulaName] = useState('');
     const [expression, setExpression] = useState('');
     const [description, setDescription] = useState('');
-    const [formulaType, setFormulaType] = useState<'income' | 'deduction' | 'general'>('general');
+    const [formulaType, setFormulaType] = useState<'income' | 'deduction' | 'base_salary' | 'general'>('general');
     const [formulaIsActive, setFormulaIsActive] = useState(true);
 
     // ── Add Item to Income/Deduction Modal State ──
@@ -63,7 +63,7 @@ export const FormulaBuilder: React.FC = () => {
     }, []);
 
     // ── Open Full Formula Builder Modal ──
-    const openFormulaModal = (formula?: Formula, defaultType?: 'income' | 'deduction' | 'general') => {
+    const openFormulaModal = (formula?: Formula, defaultType?: 'income' | 'deduction' | 'base_salary' | 'general') => {
         if (formula) {
             setFormulaId(formula.id);
             setFormulaName(formula.name);
@@ -193,9 +193,10 @@ export const FormulaBuilder: React.FC = () => {
     const numbers = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.', '30', '8', '100', '1.5', '2.0', '3.0'];
 
     const renderTypeTag = (type: string) => {
-        if (type === 'income') return <Tag color="success" style={{ fontWeight: 500 }}>รายได้ (Income)</Tag>;
-        if (type === 'deduction') return <Tag color="error" style={{ fontWeight: 500 }}>รายการหัก (Deduction)</Tag>;
-        return <Tag color="default">ทั่วไป (General)</Tag>;
+        if (type === 'base_salary') return <Tag color="geekblue" style={{ fontWeight: 500 }}>💵 เงินเดือนฐาน/รายวิก</Tag>;
+        if (type === 'income') return <Tag color="success" style={{ fontWeight: 500 }}>🟢 รายได้ (Income)</Tag>;
+        if (type === 'deduction') return <Tag color="error" style={{ fontWeight: 500 }}>🔴 รายการหัก (Deduction)</Tag>;
+        return <Tag color="default">⚪ ทั่วไป (General)</Tag>;
     };
 
     // Columns for Tab 1: All Formulas
@@ -692,17 +693,21 @@ export const FormulaBuilder: React.FC = () => {
                                     buttonStyle="solid"
                                     style={{ width: '100%' }}
                                 >
-                                    <Radio.Button value="income" style={{ width: '33.33%', textAlign: 'center' }}>
+                                    <Radio.Button value="income" style={{ width: '25%', textAlign: 'center' }}>
                                         <span style={{ color: formulaType === 'income' ? '#fff' : '#52c41a', fontWeight: 600 }}>🟢 รายได้</span>
                                     </Radio.Button>
-                                    <Radio.Button value="deduction" style={{ width: '33.33%', textAlign: 'center' }}>
+                                    <Radio.Button value="deduction" style={{ width: '25%', textAlign: 'center' }}>
                                         <span style={{ color: formulaType === 'deduction' ? '#fff' : '#ff4d4f', fontWeight: 600 }}>🔴 รายการหัก</span>
                                     </Radio.Button>
-                                    <Radio.Button value="general" style={{ width: '33.33%', textAlign: 'center' }}>
+                                    <Radio.Button value="base_salary" style={{ width: '25%', textAlign: 'center' }}>
+                                        <span style={{ color: formulaType === 'base_salary' ? '#fff' : '#1d39c4', fontWeight: 600 }}>💵 ฐาน/รายวิก</span>
+                                    </Radio.Button>
+                                    <Radio.Button value="general" style={{ width: '25%', textAlign: 'center' }}>
                                         <span>⚪ ทั่วไป</span>
                                     </Radio.Button>
                                 </Radio.Group>
                                 <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                                    {formulaType === 'base_salary' && '✨ คำนวณเป็นเงินเดือนหรือค่าจ้างฐานโดยตรง (เช่น [เงินเดือนฐาน] / 2 สำหรับรอบจ่าย 2 วิก) โดยไม่นำไปบวกเพิ่มเป็นรายได้อื่นซ้ำซ้อน'}
                                     {formulaType === 'income' && '✨ รายการนี้จะไปปรากฏใน "หน้ารายได้" และถูกบวกเพิ่มในรอบเงินเดือน'}
                                     {formulaType === 'deduction' && '✨ รายการนี้จะไปปรากฏใน "หน้ารายหัก" และถูกหักออกจากเงินเดือน'}
                                     {formulaType === 'general' && 'สูตรทั่วไป ไม่นำไปบวกหรือหักในเงินเดือนโดยตรง'}

@@ -31,6 +31,7 @@ interface PayrollRecord {
     name: string;
     department: string;
     baseSalary: number;
+    baseSalaryFormula?: string;
     isDaily?: boolean;
     workDays?: number;
     dailyRate?: number;
@@ -42,7 +43,8 @@ interface PayrollRecord {
     totalCustomDeductions?: number;
     netSalary?: number;
     status?: 'draft' | 'approved' | 'paid';
-    period?: { month: number; year: number };
+    period?: { month: number; year: number; round?: number };
+    periodRound?: number;
     isPreview?: boolean;
 }
 
@@ -57,6 +59,10 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
     const [monthFilter, setMonthFilter] = useState<dayjs.Dayjs | null>(
         initialMonth ? dayjs().year(initialMonth.year).month(initialMonth.month - 1) : dayjs()
     );
+    const [payrollRounds, setPayrollRounds] = useState<number>(1);
+    const [cutoffDate1, setCutoffDate1] = useState<number>(15);
+    const [cutoffDate2, setCutoffDate2] = useState<number>(30);
+    const [currentRound, setCurrentRound] = useState<number>(1);
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
     const [isPayslipModalVisible, setIsPayslipModalVisible] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState<PayrollRecord | null>(null);
@@ -77,18 +83,9 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         setLoading(true);
         try {
             const res = await axios.get(`${API}/payroll`, {
-                params: { month: currentMonth, year: currentYear }
+                params: { month: currentMonth, year: currentYear, round: currentRound }
             });
             setPayrollData(res.data.map((r: any) => ({ ...r, status: r.status || 'draft' })));
-
-            // fetch settings for company name
-            try {
-                const setRes = await axios.get(`${API}/settings`);
-                if (setRes.data && setRes.data.company_name) {
-                    setCompanyName(setRes.data.company_name);
-                }
-            } catch (e) { console.log('No settings found'); }
-
         } catch (error) {
             message.error('ไม่สามารถเรียกข้อมูลบัญชีเงินเดือนได้');
         } finally {
@@ -99,19 +96,28 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
     const fetchSettings = async () => {
         try {
             const res = await axios.get(`${API}/settings`);
-            if (res.data?.company_name) setCompanyName(res.data.company_name);
+            if (res.data) {
+                if (res.data.company_name) setCompanyName(res.data.company_name);
+                if (res.data.payroll_rounds) setPayrollRounds(parseInt(res.data.payroll_rounds) || 1);
+                if (res.data.payroll_cutoff_date) setCutoffDate1(parseInt(res.data.payroll_cutoff_date) || 15);
+                if (res.data.payroll_cutoff_date_2) setCutoffDate2(parseInt(res.data.payroll_cutoff_date_2) || 30);
+            }
         } catch { /* silent */ }
     };
 
     useEffect(() => {
         fetchPayroll();
         fetchSettings();
-    }, [monthFilter]);
+    }, [monthFilter, currentRound]);
 
     const handleCalculate = async () => {
         setCalculating(true);
         try {
-            const res = await axios.post(`${API}/payroll/calculate`, { month: currentMonth, year: currentYear });
+            const res = await axios.post(`${API}/payroll/calculate`, { 
+                month: currentMonth, 
+                year: currentYear,
+                round: currentRound 
+            });
             message.success(res.data.message);
             await fetchPayroll();
         } catch (error: any) {
@@ -131,6 +137,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 employee_codes: selectedRowKeys,
                 month: currentMonth,
                 year: currentYear,
+                round: currentRound,
             });
             message.success(res.data.message);
             setSelectedRowKeys([]);
@@ -311,7 +318,16 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                         </div>
                     );
                 }
-                return formatCurrency(value);
+                return (
+                    <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 600 }}>{formatCurrency(value)}</div>
+                        {record.baseSalaryFormula && (
+                            <div style={{ fontSize: 11, marginTop: 2 }}>
+                                <Tag color="geekblue" style={{ fontSize: 10, marginRight: 0 }}>{record.baseSalaryFormula}</Tag>
+                            </div>
+                        )}
+                    </div>
+                );
             },
             sorter: (a, b) => a.baseSalary - b.baseSalary,
         },
@@ -394,6 +410,17 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                 </div>
                 <Space wrap>
                     <DatePicker picker="month" value={monthFilter} onChange={setMonthFilter} allowClear={false} />
+                    {payrollRounds === 2 && (
+                        <Select 
+                            value={currentRound} 
+                            onChange={setCurrentRound}
+                            style={{ minWidth: 220 }}
+                        >
+                            <Select.Option value={1}>🗓️ งวดที่ 1 (วันที่ 1 - {cutoffDate1})</Select.Option>
+                            <Select.Option value={2}>🗓️ งวดที่ 2 (วันที่ {cutoffDate1 + 1} - {cutoffDate2})</Select.Option>
+                            <Select.Option value={0}>📅 รวมทั้งเดือน (เต็มเดือน)</Select.Option>
+                        </Select>
+                    )}
                     <Button icon={<SyncOutlined />} onClick={fetchPayroll} loading={loading}>รีโหลด</Button>
                     <Button
                         type="primary" icon={<CalculatorOutlined />}
@@ -489,7 +516,10 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                     <div ref={printRef} style={{ padding: 20, border: '1px solid #f0f0f0', borderRadius: 8 }}>
                         <div style={{ textAlign: 'center', marginBottom: 20 }}>
                             <Title level={4} style={{ margin: 0 }}>{companyName}</Title>
-                            <Text>สลิปเงินเดือน ประจำเดือน {monthFilter?.format('MM/YYYY')}</Text>
+                            <Text>
+                                สลิปเงินเดือน ประจำเดือน {monthFilter?.format('MM/YYYY')}
+                                {payrollRounds === 2 && currentRound > 0 && ` (งวดที่ ${currentRound})`}
+                            </Text>
                         </div>
                         <Divider style={{ margin: '10px 0' }} />
                         <Row style={{ marginBottom: 16 }}>
@@ -509,7 +539,7 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                     [
                                         selectedEmployee.isDaily
                                             ? `ค่าจ้างรายวัน (${selectedEmployee.workDays || 0} วัน × ${formatCurrency(selectedEmployee.dailyRate || 0)})`
-                                            : 'เงินเดือนพื้นฐาน',
+                                            : (selectedEmployee.baseSalaryFormula ? `เงินเดือนพื้นฐาน (${selectedEmployee.baseSalaryFormula})` : 'เงินเดือนพื้นฐาน'),
                                         selectedEmployee.baseSalary
                                     ],
                                     ...(selectedEmployee.earnings.overtime > 0 ? [['ค่าล่วงเวลา (OT)', selectedEmployee.earnings.overtime]] : []),
