@@ -1276,7 +1276,6 @@ export const Employees: React.FC = () => {
                 onCancel={() => setQuotaModalOpen(false)}
                 okText="บันทึก" cancelText="ยกเลิก"
             >
-                <Alert message="หากพักร้อนหรือลากิจเกินโควตา จะถูกหักเงินเดือนอัตโนมัติตามนโยบายบริษัท" type="info" showIcon style={{ marginBottom: 16 }} />
                 <Form form={quotaForm} layout="vertical" onFinish={handleSaveLeaveQuotas}>
                     {leaveQuotas.map(q => (
                         <Form.Item key={q.leave_type_id} name={`quota_${q.leave_type_id}`} label={`โควตา: ${q.leave_name} (วัน/ปี)`}>

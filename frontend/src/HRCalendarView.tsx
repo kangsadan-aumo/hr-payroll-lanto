@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Badge, Card, Typography, Alert } from 'antd';
+import { Calendar, Badge, Card, Typography } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -37,13 +37,7 @@ export const HRCalendarView: React.FC = () => {
 
     return (
         <div style={{ padding: '24px' }}>
-            <Title level={2}><CalendarOutlined /> ปฏิทินงาน HR (HR Calendar)</Title>
-            <Alert 
-                message="ปฏิทินแสดงภาพรวม: วันครบรอบเริ่มงาน, วันลาที่อนุมัติแล้ว, วันหมดสัญญา และวันครบโปรโมชั่น" 
-                type="info" 
-                showIcon 
-                style={{ marginBottom: 16 }}
-            />
+            <Title level={2} style={{ marginBottom: 20 }}><CalendarOutlined /> ปฏิทินงาน HR (HR Calendar)</Title>
             <Card>
                 <Calendar cellRender={dateCellRender} />
             </Card>

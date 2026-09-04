@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Form, Input, Button, Card, Col, Row, Select, message, Spin, Divider, Radio, Alert } from 'antd';
+import { Typography, Form, Input, Button, Card, Col, Row, Select, message, Spin, Divider, Radio } from 'antd';
 import { SaveOutlined, BankOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import { API_BASE_URL as API } from './api';
@@ -105,14 +105,6 @@ export const Settings: React.FC = () => {
 
                             <Title level={4} style={{ marginTop: 36 }}>การตัดรอบเงินเดือน (Payroll Cutoff Cycle)</Title>
                             <Divider style={{ margin: '12px 0 20px 0' }} />
-
-                            <Alert
-                                type="info"
-                                showIcon
-                                message="สูตรคำนวณ รายการรายได้ และรายการหักเงิน"
-                                description="สูตรคำนวณทั้งหมด (ค่าโอที, เบี้ยขยัน, ค่าปรับมาสาย, หักวันลา, ประกันสังคม ฯลฯ) ถูกย้ายไปบริหารจัดการอย่างยืดหยุ่นที่เมนู 'ตั้งค่าสูตรคำนวณ' และนโยบายวันหยุด/วันลาถูกย้ายไปที่เมนู 'การจัดการลา' เรียบร้อยแล้ว"
-                                style={{ marginBottom: 20 }}
-                            />
 
                             <Form.Item 
                                 name="payroll_rounds" 

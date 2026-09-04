@@ -21,8 +21,7 @@ import {
     Tag,
     Popconfirm,
     Calendar,
-    Segmented,
-    Alert
+    Segmented
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
@@ -795,14 +794,6 @@ export const Leave: React.FC = () => {
                                         </Button>
                                     </Space>
                                 </div>
-
-                                <Alert
-                                    type="info"
-                                    showIcon
-                                    message="วิธีเพิ่มวันหยุดจากปฏิทิน"
-                                    description="คลิกที่ช่องวันที่ใดก็ได้บนปฏิทินเพื่อกำหนดเป็นวันหยุดนักขัตฤกษ์ ระบบจะระบุวันที่ให้อัตโนมัติในแบบฟอร์มทันที"
-                                    style={{ marginBottom: 16 }}
-                                />
 
                                 {holidayViewMode === 'calendar' ? (
                                     <div style={{ background: '#fafafa', padding: '16px', borderRadius: 8, border: '1px solid #f0f0f0' }}>

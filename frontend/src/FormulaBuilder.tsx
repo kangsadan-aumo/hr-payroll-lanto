@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Table, Button, Modal, Row, Col, Card, Typography, Space, Input, message,
-    Popconfirm, Divider, Tabs, Select, Radio, Tag, Switch, Tooltip, Alert
+    Popconfirm, Divider, Tabs, Select, Radio, Tag, Switch, Tooltip
 } from 'antd';
 import {
     PlusOutlined, DeleteOutlined, EditOutlined, CalculatorOutlined,
@@ -407,14 +407,6 @@ export const FormulaBuilder: React.FC = () => {
                         key="2"
                     >
                         <div style={{ padding: '8px 0' }}>
-                            <Alert
-                                message="การทำงานของหน้ารายได้"
-                                description="รายการรายได้ในหน้านี้จะถูกนำไปคำนวณและบวกเพิ่มเป็นรายได้ในรอบเงินเดือน (เช่น ค่าโอที, เบี้ยขยัน, ค่าพาหนะ) คุณสามารถสร้างใหม่หรือดึงจากสูตรที่ตั้งไว้มาเป็นรายได้ได้ทันที"
-                                type="success"
-                                showIcon
-                                style={{ marginBottom: 16, borderRadius: 8 }}
-                            />
-
                             <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
                                 <Col>
                                     <Text strong style={{ fontSize: 16 }}>รายการรายได้ที่ใช้งาน ({incomeList.length} รายการ)</Text>
@@ -457,14 +449,6 @@ export const FormulaBuilder: React.FC = () => {
                         key="3"
                     >
                         <div style={{ padding: '8px 0' }}>
-                            <Alert
-                                message="การทำงานของหน้ารายหัก"
-                                description="รายการหักในหน้านี้จะถูกนำไปคำนวณและหักออกจากเงินเดือนสุทธิ (เช่น หักประกันสังคม, หักค่าปรับมาสาย, หักลางานไม่รับเงิน) คุณสามารถสร้างใหม่หรือดึงจากสูตรที่ตั้งไว้มาเป็นรายการหักได้ทันที"
-                                type="error"
-                                showIcon
-                                style={{ marginBottom: 16, borderRadius: 8 }}
-                            />
-
                             <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
                                 <Col>
                                     <Text strong style={{ fontSize: 16 }}>รายการหักที่ใช้งาน ({deductionList.length} รายการ)</Text>
