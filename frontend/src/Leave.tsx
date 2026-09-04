@@ -19,7 +19,10 @@ import {
     message,
     Tabs,
     Tag,
-    Popconfirm
+    Popconfirm,
+    Calendar,
+    Segmented,
+    Alert
 } from 'antd';
 import type { TableProps } from 'antd';
 import {
@@ -33,7 +36,8 @@ import {
     FileTextOutlined,
     EditOutlined,
     DeleteOutlined,
-    CarryOutOutlined
+    CarryOutOutlined,
+    TableOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
@@ -83,6 +87,7 @@ export const Leave: React.FC = () => {
     const [editingLeaveTypeId, setEditingLeaveTypeId] = useState<string | null>(null);
 
     const [uploading, setUploading] = useState(false);
+    const [holidayViewMode, setHolidayViewMode] = useState<'calendar' | 'table'>('calendar');
 
     // Form instances
     const [form] = Form.useForm();
@@ -346,6 +351,104 @@ export const Leave: React.FC = () => {
             fetchData();
         } catch (error) {
             message.error('เกิดข้อผิดพลาดในการลบวันหยุด');
+        }
+    };
+
+    const holidayDateCellRender = (current: dayjs.Dayjs, info?: any) => {
+        if (info && info.type !== 'date') return info.originNode;
+
+        const dateStr = current.format('YYYY-MM-DD');
+        const dayHolidays = publicHolidays.filter(h => dayjs(h.holiday_date).format('YYYY-MM-DD') === dateStr);
+
+        return (
+            <div
+                style={{
+                    minHeight: 48,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    padding: '2px 0'
+                }}
+            >
+                <div>
+                    {dayHolidays.map((item) => (
+                        <div
+                            key={item.id}
+                            style={{
+                                backgroundColor: '#fff1f0',
+                                border: '1px solid #ffa39e',
+                                color: '#cf1322',
+                                borderRadius: 4,
+                                padding: '2px 6px',
+                                fontSize: '11px',
+                                fontWeight: 500,
+                                marginBottom: 2,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                boxShadow: '0 1px 2px rgba(255, 77, 79, 0.08)'
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name}>
+                                🏖️ {item.name}
+                            </span>
+                            <Popconfirm
+                                title="ลบวันหยุดนี้หรือไม่?"
+                                onConfirm={(e) => {
+                                    e?.stopPropagation();
+                                    handleDeleteHoliday(item.id);
+                                }}
+                                onCancel={(e) => e?.stopPropagation()}
+                                okText="ลบ"
+                                cancelText="ยกเลิก"
+                            >
+                                <Button
+                                    type="text"
+                                    size="small"
+                                    danger
+                                    icon={<DeleteOutlined style={{ fontSize: 11 }} />}
+                                    style={{ padding: 0, height: 'auto', marginLeft: 4 }}
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            </Popconfirm>
+                        </div>
+                    ))}
+                </div>
+
+                <div
+                    style={{
+                        fontSize: '11px',
+                        color: '#1890ff',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 2,
+                        opacity: 0.75,
+                        marginTop: 2
+                    }}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        holidayForm.setFieldsValue({
+                            holidayDate: current,
+                            holidayName: ''
+                        });
+                        setIsHolidayModalOpen(true);
+                    }}
+                >
+                    <PlusOutlined style={{ fontSize: 10 }} /> เพิ่มวันหยุด
+                </div>
+            </div>
+        );
+    };
+
+    const onSelectHolidayDate = (date: dayjs.Dayjs, selectInfo: any) => {
+        if (selectInfo?.source === 'date') {
+            holidayForm.setFieldsValue({
+                holidayDate: date,
+                holidayName: ''
+            });
+            setIsHolidayModalOpen(true);
         }
     };
 
@@ -667,28 +770,57 @@ export const Leave: React.FC = () => {
                             <Card bordered={false} style={{ borderRadius: 8 }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
                                     <div>
-                                        <Title level={4} style={{ margin: 0 }}>วันหยุดนักขัตฤกษ์ประจำปี</Title>
-                                        <Text type="secondary">รายการวันหยุดประเพณีและวันหยุดราชการประจำปีสำหรับใช้คำนวณปฏิทินทำงาน</Text>
+                                        <Title level={4} style={{ margin: 0 }}>ปฏิทินวันหยุดนักขัตฤกษ์ประจำปี</Title>
+                                        <Text type="secondary">สามารถคลิกที่ช่องวันที่ในปฏิทินเพื่อเพิ่มวันหยุดของวันนั้นได้ทันที หรือกดปุ่ม '+ เพิ่มวันหยุด'</Text>
                                     </div>
-                                    <Button
-                                        type="primary"
-                                        icon={<PlusOutlined />}
-                                        onClick={() => {
-                                            holidayForm.resetFields();
-                                            setIsHolidayModalOpen(true);
-                                        }}
-                                    >
-                                        เพิ่มวันหยุด
-                                    </Button>
+                                    <Space wrap>
+                                        <Segmented
+                                            value={holidayViewMode}
+                                            onChange={(val) => setHolidayViewMode(val as 'calendar' | 'table')}
+                                            options={[
+                                                { label: 'มุมมองปฏิทิน', value: 'calendar', icon: <CalendarOutlined /> },
+                                                { label: 'มุมมองตาราง', value: 'table', icon: <TableOutlined /> }
+                                            ]}
+                                        />
+                                        <Button
+                                            type="primary"
+                                            icon={<PlusOutlined />}
+                                            onClick={() => {
+                                                holidayForm.resetFields();
+                                                holidayForm.setFieldsValue({ holidayDate: dayjs() });
+                                                setIsHolidayModalOpen(true);
+                                            }}
+                                        >
+                                            เพิ่มวันหยุด
+                                        </Button>
+                                    </Space>
                                 </div>
-                                <Table
-                                    columns={holidayColumns}
-                                    dataSource={publicHolidays}
-                                    rowKey="id"
-                                    pagination={{ pageSize: 12 }}
-                                    bordered
-                                    loading={loading}
+
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    message="วิธีเพิ่มวันหยุดจากปฏิทิน"
+                                    description="คลิกที่ช่องวันที่ใดก็ได้บนปฏิทินเพื่อกำหนดเป็นวันหยุดนักขัตฤกษ์ ระบบจะระบุวันที่ให้อัตโนมัติในแบบฟอร์มทันที"
+                                    style={{ marginBottom: 16 }}
                                 />
+
+                                {holidayViewMode === 'calendar' ? (
+                                    <div style={{ background: '#fafafa', padding: '16px', borderRadius: 8, border: '1px solid #f0f0f0' }}>
+                                        <Calendar
+                                            cellRender={holidayDateCellRender}
+                                            onSelect={onSelectHolidayDate}
+                                        />
+                                    </div>
+                                ) : (
+                                    <Table
+                                        columns={holidayColumns}
+                                        dataSource={publicHolidays}
+                                        rowKey="id"
+                                        pagination={{ pageSize: 12 }}
+                                        bordered
+                                        loading={loading}
+                                    />
+                                )}
                             </Card>
                         )
                     }
