@@ -15,7 +15,7 @@ dotenv.config();
 const app = express();
 app.use(cors({
     origin: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     credentials: true,
     preflightContinue: false,
@@ -1038,13 +1038,13 @@ app.put('/api/settings', async (req, res) => {
 // ─────────────────────────────────────────────
 function evaluateFormula(expression, variables) {
     if (!expression) return 0;
-    let evalStr = expression;
+    let evalStr = String(expression);
     // Replace variables (e.g. [เงินเดือนฐาน])
     for (const [key, value] of Object.entries(variables)) {
-        evalStr = evalStr.replace(new RegExp('\\\\[' + key + '\\\\]', 'g'), Number(value) || 0);
+        evalStr = evalStr.replaceAll(`[${key}]`, String(Number(value) || 0));
     }
     // Remove any remaining unreplaced variables
-    evalStr = evalStr.replace(/\\[.*?\\]/g, '0');
+    evalStr = evalStr.replace(/\[.*?\]/g, '0');
     try {
         const result = Function(`'use strict'; return (${evalStr})`)();
         return isNaN(result) ? 0 : Math.max(0, Math.round(result * 100) / 100);
@@ -2683,7 +2683,10 @@ app.get('/api/formulas', async (req, res) => {
         sql += ' ORDER BY created_at DESC';
         const [rows] = await pool.query(sql, params);
         res.json(rows);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+    } catch (error) {
+        console.error('GET /api/formulas error:', error);
+        res.status(500).json({ error: error.message || String(error) });
+    }
 });
 
 app.post('/api/formulas', async (req, res) => {
@@ -2709,7 +2712,7 @@ app.put('/api/formulas/:id', async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.patch('/api/formulas/:id/status', async (req, res) => {
+const updateFormulaStatus = async (req, res) => {
     try {
         const { id } = req.params;
         const { is_active, type } = req.body;
@@ -2729,7 +2732,10 @@ app.patch('/api/formulas/:id/status', async (req, res) => {
         }
         res.json({ message: 'Formula status updated successfully' });
     } catch (error) { res.status(500).json({ error: error.message }); }
-});
+};
+
+app.put('/api/formulas/:id/status', updateFormulaStatus);
+app.patch('/api/formulas/:id/status', updateFormulaStatus);
 
 app.delete('/api/formulas/:id', async (req, res) => {
     try {

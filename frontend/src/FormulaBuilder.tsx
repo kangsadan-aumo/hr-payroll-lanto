@@ -119,7 +119,7 @@ export const FormulaBuilder: React.FC = () => {
     const handleToggleStatus = async (id: number, currentStatus: boolean | number) => {
         const nextStatus = !(currentStatus === 1 || currentStatus === true);
         try {
-            await axios.patch(`${API}/formulas/${id}/status`, { is_active: nextStatus ? 1 : 0 });
+            await axios.put(`${API}/formulas/${id}/status`, { is_active: nextStatus ? 1 : 0 });
             message.success(nextStatus ? 'เปิดใช้งานสูตรแล้ว' : 'ปิดใช้งานสูตรแล้ว');
             setFormulas(prev => prev.map(f => f.id === id ? { ...f, is_active: nextStatus ? 1 : 0 } : f));
         } catch (err) {
@@ -141,7 +141,7 @@ export const FormulaBuilder: React.FC = () => {
     // ── Remove from Income/Deduction (revert to general) ──
     const handleRevertToGeneral = async (id: number) => {
         try {
-            await axios.patch(`${API}/formulas/${id}/status`, { type: 'general' });
+            await axios.put(`${API}/formulas/${id}/status`, { type: 'general' });
             message.success('นำรายการออกจากหมวดหมู่นี้แล้ว');
             fetchFormulas();
         } catch (err) {
@@ -163,7 +163,7 @@ export const FormulaBuilder: React.FC = () => {
             return message.warning('กรุณาเลือกสูตรที่ต้องการนำมาใช้');
         }
         try {
-            await axios.patch(`${API}/formulas/${selectedFormulaId}/status`, {
+            await axios.put(`${API}/formulas/${selectedFormulaId}/status`, {
                 type: targetCategory,
                 is_active: 1
             });
