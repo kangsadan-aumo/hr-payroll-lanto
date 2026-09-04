@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider } from 'antd';
+import { Typography, Tabs, Form, Input, InputNumber, Button, Switch, DatePicker, Card, Col, Row, Select, message, Table, Space, Tag, Modal, Spin, Divider, Radio, Alert } from 'antd';
 import { SaveOutlined, BankOutlined, CalendarOutlined, SafetyCertificateOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -22,6 +22,7 @@ export const Settings: React.FC = () => {
     const [leaveRules, setLeaveRules] = useState<any[]>([]);
     const [otherLeaves, setOtherLeaves] = useState<any[]>([]);
     const [publicHolidays, setPublicHolidays] = useState<any[]>([]);
+    const [payrollRounds, setPayrollRounds] = useState<number>(1);
 
     // Modal Visibilities
     const [isLeaveRuleModalOpen, setIsLeaveRuleModalOpen] = useState(false);
@@ -45,24 +46,19 @@ export const Settings: React.FC = () => {
                 axios.get(`${API_BASE}/settings/holidays`)
             ]);
 
-            // Set Company Info
-            const s = settingsRes.data;
-            console.log('Fetched Settings:', s);
+            // Set Company Info & Cutoff settings
+            const s = settingsRes.data || {};
+            const rounds = Number(s.payroll_rounds) === 2 ? 2 : 1;
+            setPayrollRounds(rounds);
             companyForm.setFieldsValue({
                 company_name: s.company_name || '',
                 taxId: s.tax_id || '',
                 branch_code: s.branch_code || '00000',
                 address: s.address || '',
-                deductExcessSickLeave: Boolean(Number(s.deduct_excess_sick_leave)),
-                deductExcessPersonalLeave: Boolean(Number(s.deduct_excess_personal_leave)),
-                latePenaltyPerMin: Number(s.late_penalty_per_minute) || 0,
-                autoDeductTax: Boolean(Number(s.auto_deduct_tax)),
-                autoDeductSso: Boolean(Number(s.auto_deduct_sso)),
-                payrollCutoffDate: s.payroll_cutoff_date || 25,
-                diligenceAllowance: Number(s.diligence_allowance) || 0
+                payroll_rounds: rounds,
+                payrollCutoffDate: Number(s.payroll_cutoff_date) || 25,
+                payrollCutoffDate2: Number(s.payroll_cutoff_date_2) || 15
             });
-
-            // Set Others
 
             setLeaveRules(leaveRulesRes.data);
             setOtherLeaves(leaveTypesRes.data);
@@ -82,23 +78,21 @@ export const Settings: React.FC = () => {
     // --- Company Info Handlers ---
     const onSaveCompanyInfo = async (values: any) => {
         try {
+            const rounds = Number(values.payroll_rounds) || 1;
             const payload = {
                 company_name: values.company_name,
                 tax_id: values.taxId,
                 branch_code: values.branch_code,
                 address: values.address,
-                deduct_excess_sick_leave: !!values.deductExcessSickLeave,
-                deduct_excess_personal_leave: !!values.deductExcessPersonalLeave,
-                late_penalty_per_minute: values.latePenaltyPerMin ?? 0,
-                auto_deduct_tax: !!values.autoDeductTax,
-                auto_deduct_sso: !!values.autoDeductSso,
-                payroll_cutoff_date: values.payrollCutoffDate,
-                diligence_allowance: values.diligenceAllowance ?? 0
+                payroll_rounds: rounds,
+                payroll_cutoff_date: Number(values.payrollCutoffDate) || 25,
+                payroll_cutoff_date_2: rounds === 2 ? (Number(values.payrollCutoffDate2) || 15) : null
             };
             await axios.put(`${API_BASE}/settings`, payload);
-            message.success('อัปเดตข้อมูลบริษัทและนโยบายสำเร็จ');
+            message.success('อัปเดตข้อมูลบริษัทและรอบการตัดเงินเดือนสำเร็จ');
             fetchAllData();
         } catch (error) {
+            console.error('Settings update error:', error);
             message.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
         }
     };
@@ -277,14 +271,14 @@ export const Settings: React.FC = () => {
             <Card bordered={false} style={{ borderRadius: 8, minHeight: 'calc(100vh - 160px)' }}>
               <Spin spinning={loading} size="large">
                 <Tabs defaultActiveKey="1" tabPosition="left">
-                    <TabPane tab={<span><BankOutlined /> ข้อมูลบริษัท & นโยบาย</span>} key="1">
+                    <TabPane tab={<span><BankOutlined /> ข้อมูลบริษัท & รอบเงินเดือน</span>} key="1">
                         <div style={{ maxWidth: 800, paddingLeft: 24 }}>
                             <Title level={4}>ข้อมูลบริษัท</Title>
                             <Divider style={{ margin: '12px 0 24px 0' }} />
                             <Form form={companyForm} layout="vertical" onFinish={onSaveCompanyInfo}>
                                 <Row gutter={16}>
                                     <Col span={10}>
-                                        <Form.Item name="company_name" label="ชื่อบริษัท" rules={[{ required: true }]}>
+                                        <Form.Item name="company_name" label="ชื่อบริษัท" rules={[{ required: true, message: 'กรุณาระบุชื่อบริษัท' }]}>
                                             <Input placeholder="ระบุชื่อบริษัท" />
                                         </Form.Item>
                                     </Col>
@@ -300,73 +294,104 @@ export const Settings: React.FC = () => {
                                     </Col>
                                 </Row>
                                 <Form.Item name="address" label="ที่อยู่บริษัท">
-                                    <Input.TextArea rows={2} />
+                                    <Input.TextArea rows={2} placeholder="ระบุที่อยู่บริษัท" />
                                 </Form.Item>
 
-                                <Title level={4} style={{ marginTop: 32 }}>นโยบายการหักเงิน (Payroll Policies)</Title>
-                                <Divider style={{ margin: '12px 0 24px 0' }} />
+                                <Title level={4} style={{ marginTop: 32 }}>การตัดรอบเงินเดือน (Payroll Cutoff Cycle)</Title>
+                                <Divider style={{ margin: '12px 0 20px 0' }} />
 
-                                <Row gutter={16}>
-                                    <Col span={12}>
-                                        <Card size="small" style={{ marginBottom: 16 }}>
-                                            <Form.Item name="deductExcessSickLeave" valuePropName="checked" style={{ margin: 0 }}>
-                                                <Switch /> <Text style={{ marginLeft: 8 }}>หักเงินหากลาป่วยเกินโควตาขั้นต่ำตามกฎหมาย (30 วัน)</Text>
-                                            </Form.Item>
-                                        </Card>
-                                    </Col>
-                                    <Col span={12}>
-                                        <Card size="small" style={{ marginBottom: 16 }}>
-                                            <Form.Item name="deductExcessPersonalLeave" valuePropName="checked" style={{ margin: 0 }}>
-                                                <Switch /> <Text style={{ marginLeft: 8 }}>หักเงินหากลากิจเกินโควตา (Paid Leave)</Text>
-                                            </Form.Item>
-                                        </Card>
-                                    </Col>
-                                </Row>
+                                <Alert
+                                    type="info"
+                                    showIcon
+                                    message="สูตรคำนวณ รายการรายได้ และรายการหักเงิน"
+                                    description="สูตรคำนวณทั้งหมด (ค่าโอที, เบี้ยขยัน, ค่าปรับมาสาย, หักวันลา, ประกันสังคม ฯลฯ) ถูกย้ายไปบริหารจัดการอย่างยืดหยุ่นที่เมนู 'ตั้งค่าสูตรคำนวณ' เรียบร้อยแล้ว"
+                                    style={{ marginBottom: 20 }}
+                                />
 
-                                <Row gutter={16}>
-                                    <Col span={12}>
-                                        <Card size="small" style={{ marginBottom: 16 }}>
-                                            <Form.Item name="autoDeductTax" valuePropName="checked" style={{ margin: 0 }}>
-                                                <Switch /> <Text style={{ marginLeft: 8 }}>คำนวณและหักภาษี ณ ที่จ่าย (ภ.ง.ด.1) อัตโนมัติ</Text>
-                                            </Form.Item>
-                                        </Card>
-                                    </Col>
-                                    <Col span={12}>
-                                        <Card size="small" style={{ marginBottom: 16 }}>
-                                            <Form.Item name="autoDeductSso" valuePropName="checked" style={{ margin: 0 }}>
-                                                <Switch /> <Text style={{ marginLeft: 8 }}>คำนวณและหักประกันสังคม (SSO) อัตโนมัติ</Text>
-                                            </Form.Item>
-                                        </Card>
-                                    </Col>
-                                </Row>
+                                <Form.Item 
+                                    name="payroll_rounds" 
+                                    label="รอบการตัดเงินเดือนในแต่ละเดือน" 
+                                    tooltip="เลือกได้ว่าจะให้ตัดเงินเดือนเดือนละ 1 รอบ หรือ 2 รอบ"
+                                    rules={[{ required: true }]}
+                                >
+                                    <Radio.Group onChange={(e) => setPayrollRounds(e.target.value)} buttonStyle="solid">
+                                        <Radio.Button value={1} style={{ padding: '0 24px', marginRight: 12, borderRadius: 6 }}>
+                                            🗓️ ตัดเดือนละ 1 รอบ
+                                        </Radio.Button>
+                                        <Radio.Button value={2} style={{ padding: '0 24px', borderRadius: 6 }}>
+                                            🗓️🗓️ ตัดเดือนละ 2 รอบ
+                                        </Radio.Button>
+                                    </Radio.Group>
+                                </Form.Item>
 
-                                <Row gutter={16} style={{ marginTop: 16 }}>
-                                    <Col span={12}>
-                                        <Form.Item name="latePenaltyPerMin" label="อัตราการหักเงินมาสาย (บาท / นาที)">
-                                            <InputNumber min={0} defaultValue={0} style={{ width: '100%' }} />
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={12}>
-                                        <Form.Item name="diligenceAllowance" label="เบี้ยขยัน (บาท / เดือน) หากไม่สายหรือลางาน">
-                                            <InputNumber min={0} defaultValue={0} style={{ width: '100%' }} />
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-
-                                <Row gutter={16} style={{ marginTop: 16 }}>
-                                    <Col span={12}>
-                                        <Form.Item name="payrollCutoffDate" label="วันที่ตัดรอบเงินเดือน (ของทุกเดือน)" tooltip="หากเลือก 25 หมายถึงตัดรอบตั้งแต่วันที่ 26 เดือนก่อนหน้า ถึง 25 เดือนปัจจุบัน">
-                                            <Select>
-                                                <Select.Option value={25}>วันที่ 25</Select.Option>
-                                                <Select.Option value={30}>สิ้นเดือน (30/31)</Select.Option>
-                                                <Select.Option value={15}>วันที่ 15</Select.Option>
-                                            </Select>
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
+                                {payrollRounds === 1 ? (
+                                    <Row gutter={16} style={{ marginTop: 12 }}>
+                                        <Col span={14}>
+                                            <Form.Item 
+                                                name="payrollCutoffDate" 
+                                                label="วันที่ตัดรอบเงินเดือน (ของทุกเดือน)" 
+                                                tooltip="วันสุดท้ายของการนับเวลาทำงานในรอบเดือนนั้นๆ เช่น วันที่ 25 หมายถึงตัดยอดตั้งแต่วันที่ 26 เดือนก่อนหน้า ถึง 25 เดือนปัจจุบัน"
+                                                rules={[{ required: true, message: 'กรุณาเลือกวันตัดยอด' }]}
+                                            >
+                                                <Select placeholder="เลือกวันตัดยอด">
+                                                    <Select.Option value={25}>วันที่ 25 ของเดือน (รอบปกติ)</Select.Option>
+                                                    <Select.Option value={31}>สิ้นเดือน (วันสุดท้ายของเดือน)</Select.Option>
+                                                    <Select.Option value={30}>วันที่ 30 ของเดือน</Select.Option>
+                                                    <Select.Option value={20}>วันที่ 20 ของเดือน</Select.Option>
+                                                    <Select.Option value={15}>วันที่ 15 ของเดือน</Select.Option>
+                                                    <Select.OptGroup label="เลือกวันที่ 1 - 30">
+                                                        {Array.from({ length: 30 }, (_, i) => i + 1).map(day => (
+                                                            <Select.Option key={day} value={day}>วันที่ {day} ของเดือน</Select.Option>
+                                                        ))}
+                                                    </Select.OptGroup>
+                                                </Select>
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+                                ) : (
+                                    <Row gutter={16} style={{ marginTop: 12 }}>
+                                        <Col span={12}>
+                                            <Form.Item 
+                                                name="payrollCutoffDate" 
+                                                label="วันที่ตัดยอด รอบที่ 1 (งวดแรก)" 
+                                                tooltip="เช่น ตัดยอดวันที่ 15 ของเดือน สำหรับจ่ายงวดกลางเดือน"
+                                                rules={[{ required: true, message: 'กรุณาเลือกวันตัดยอดรอบที่ 1' }]}
+                                            >
+                                                <Select placeholder="เลือกวันตัดยอดรอบที่ 1">
+                                                    <Select.Option value={15}>วันที่ 15 ของเดือน (แนะนำงวดที่ 1)</Select.Option>
+                                                    <Select.Option value={10}>วันที่ 10 ของเดือน</Select.Option>
+                                                    <Select.OptGroup label="เลือกวันที่ 1 - 28">
+                                                        {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
+                                                            <Select.Option key={day} value={day}>วันที่ {day} ของเดือน</Select.Option>
+                                                        ))}
+                                                    </Select.OptGroup>
+                                                </Select>
+                                            </Form.Item>
+                                        </Col>
+                                        <Col span={12}>
+                                            <Form.Item 
+                                                name="payrollCutoffDate2" 
+                                                label="วันที่ตัดยอด รอบที่ 2 (งวดสิ้นเดือน)" 
+                                                tooltip="เช่น ตัดยอดสิ้นเดือน หรือ วันที่ 30 ของเดือน สำหรับจ่ายงวดสิ้นเดือน"
+                                                rules={[{ required: true, message: 'กรุณาเลือกวันตัดยอดรอบที่ 2' }]}
+                                            >
+                                                <Select placeholder="เลือกวันตัดยอดรอบที่ 2">
+                                                    <Select.Option value={31}>สิ้นเดือน (วันสุดท้ายของเดือน - แนะนำงวดที่ 2)</Select.Option>
+                                                    <Select.Option value={30}>วันที่ 30 ของเดือน</Select.Option>
+                                                    <Select.Option value={25}>วันที่ 25 ของเดือน</Select.Option>
+                                                    <Select.OptGroup label="เลือกวันที่ 16 - 30">
+                                                        {Array.from({ length: 15 }, (_, i) => i + 16).map(day => (
+                                                            <Select.Option key={day} value={day}>วันที่ {day} ของเดือน</Select.Option>
+                                                        ))}
+                                                    </Select.OptGroup>
+                                                </Select>
+                                            </Form.Item>
+                                        </Col>
+                                    </Row>
+                                )}
 
                                 <Form.Item style={{ marginTop: 24 }}>
-                                    <Button type="primary" htmlType="submit" icon={<SaveOutlined />} size="large">บันทึกข้อมูลและนโยบาย</Button>
+                                    <Button type="primary" htmlType="submit" icon={<SaveOutlined />} size="large">บันทึกข้อมูลและรอบเงินเดือน</Button>
                                 </Form.Item>
                             </Form>
                         </div>

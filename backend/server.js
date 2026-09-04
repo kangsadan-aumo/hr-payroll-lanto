@@ -998,44 +998,39 @@ app.put('/api/settings', async (req, res) => {
             tax_id = '', 
             branch_code = '00000', 
             address = '', 
-            deduct_excess_sick_leave = 0, 
-            deduct_excess_personal_leave = 0,
-            late_penalty_per_minute = 0, 
-            auto_deduct_tax = 0, 
-            auto_deduct_sso = 0, 
+            payroll_rounds = 1,
             payroll_cutoff_date = 25, 
-            diligence_allowance = 0,
-            ot_formula_id = null,
-            late_formula_id = null,
-            leave_formula_id = null,
-            diligence_formula_id = null
+            payroll_cutoff_date_2 = null
         } = req.body;
         
         await pool.query(`
             INSERT INTO system_settings 
-            (id, company_name, tax_id, branch_code, address, deduct_excess_sick_leave, deduct_excess_personal_leave, late_penalty_per_minute, auto_deduct_tax, auto_deduct_sso, payroll_cutoff_date, diligence_allowance, ot_formula_id, late_formula_id, leave_formula_id, diligence_formula_id)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, company_name, tax_id, branch_code, address, payroll_rounds, payroll_cutoff_date, payroll_cutoff_date_2)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                company_name=VALUES(company_name), tax_id=VALUES(tax_id), branch_code=VALUES(branch_code), address=VALUES(address),
-                deduct_excess_sick_leave=VALUES(deduct_excess_sick_leave), deduct_excess_personal_leave=VALUES(deduct_excess_personal_leave),
-                late_penalty_per_minute=VALUES(late_penalty_per_minute), auto_deduct_tax=VALUES(auto_deduct_tax), auto_deduct_sso=VALUES(auto_deduct_sso),
-                payroll_cutoff_date=VALUES(payroll_cutoff_date), diligence_allowance=VALUES(diligence_allowance),
-                ot_formula_id=VALUES(ot_formula_id), late_formula_id=VALUES(late_formula_id), leave_formula_id=VALUES(leave_formula_id), diligence_formula_id=VALUES(diligence_formula_id),
+                company_name=VALUES(company_name), 
+                tax_id=VALUES(tax_id), 
+                branch_code=VALUES(branch_code), 
+                address=VALUES(address),
+                payroll_rounds=VALUES(payroll_rounds),
+                payroll_cutoff_date=VALUES(payroll_cutoff_date),
+                payroll_cutoff_date_2=VALUES(payroll_cutoff_date_2),
                 updated_at=CURRENT_TIMESTAMP
         `, [
-            company_name, tax_id, branch_code, address, 
-            deduct_excess_sick_leave ? 1 : 0, 
-            deduct_excess_personal_leave ? 1 : 0, 
-            late_penalty_per_minute, 
-            auto_deduct_tax ? 1 : 0, 
-            auto_deduct_sso ? 1 : 0, 
-            payroll_cutoff_date, 
-            diligence_allowance,
-            ot_formula_id, late_formula_id, leave_formula_id, diligence_formula_id
+            company_name, 
+            tax_id, 
+            branch_code, 
+            address, 
+            parseInt(payroll_rounds) || 1,
+            parseInt(payroll_cutoff_date) || 25, 
+            payroll_cutoff_date_2 ? parseInt(payroll_cutoff_date_2) : null
         ]);
             
         res.json({ message: 'Settings updated' });
-    } catch (error) { res.status(500).json({ error: error.message }); }
+    } catch (error) { 
+        console.error('Update settings error:', error);
+        res.status(500).json({ error: error.message }); 
+    }
 });
 
 // ─────────────────────────────────────────────
@@ -3024,6 +3019,8 @@ async function runMigrations() {
     await ensureColumnExists('system_settings', 'auto_deduct_tax', 'TINYINT(1) DEFAULT 0');
     await ensureColumnExists('system_settings', 'auto_deduct_sso', 'TINYINT(1) DEFAULT 0');
     await ensureColumnExists('system_settings', 'payroll_cutoff_date', 'INT DEFAULT 25');
+    await ensureColumnExists('system_settings', 'payroll_rounds', 'INT DEFAULT 1');
+    await ensureColumnExists('system_settings', 'payroll_cutoff_date_2', 'INT DEFAULT NULL');
     await ensureColumnExists('attendance_logs', 'shift_id', 'INT NULL');
     await ensureColumnExists('payroll_formulas', 'type', "VARCHAR(20) DEFAULT 'general'");
     await ensureColumnExists('payroll_formulas', 'is_active', "TINYINT(1) DEFAULT 1");
