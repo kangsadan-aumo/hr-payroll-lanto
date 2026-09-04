@@ -3,9 +3,10 @@ import { Table, Button, Modal, Row, Col, Card, Typography, Space, Input, message
 import { PlusOutlined, DeleteOutlined, EditOutlined, CalculatorOutlined, SettingOutlined, MoneyCollectOutlined, FallOutlined, SaveOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
+import { API_BASE_URL as API } from './api';
+
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
-const API = 'http://localhost:5000/api';
 
 export const FormulaBuilder: React.FC = () => {
     const [formulas, setFormulas] = useState<any[]>([]);
