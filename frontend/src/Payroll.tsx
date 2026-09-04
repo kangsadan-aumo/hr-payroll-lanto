@@ -19,6 +19,12 @@ import html2canvas from 'html2canvas';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
+interface CustomPayrollItem {
+    id?: number;
+    name: string;
+    amount: number;
+}
+
 interface PayrollRecord {
     employeeId: string;
     employee_id?: number;
@@ -27,6 +33,10 @@ interface PayrollRecord {
     baseSalary: number;
     earnings: { overtime: number; bonus: number; diligenceAllowance?: number; };
     deductions: { tax: number; socialSecurity: number; latePenalty: number; unpaidLeave: number; };
+    customIncomes?: CustomPayrollItem[];
+    customDeductions?: CustomPayrollItem[];
+    totalCustomIncomes?: number;
+    totalCustomDeductions?: number;
     netSalary?: number;
     status?: 'draft' | 'approved' | 'paid';
     period?: { month: number; year: number };
@@ -245,18 +255,16 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         }
     };
 
-    const calculateNetSalary = (record: PayrollRecord) => {
-        if (record.netSalary !== undefined) return record.netSalary;
-        const totalEarnings = record.baseSalary + record.earnings.overtime + record.earnings.bonus + (record.earnings.diligenceAllowance || 0);
-        const totalDeductions = record.deductions.tax + record.deductions.socialSecurity + record.deductions.latePenalty + record.deductions.unpaidLeave;
-        return totalEarnings - totalDeductions;
-    };
-
     const calculateTotalGross = (r: PayrollRecord) =>
-        r.baseSalary + r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0);
+        r.baseSalary + r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0) + (r.totalCustomIncomes || 0);
 
     const calculateTotalDeduction = (r: PayrollRecord) =>
-        r.deductions.tax + r.deductions.socialSecurity + r.deductions.latePenalty + r.deductions.unpaidLeave;
+        r.deductions.tax + r.deductions.socialSecurity + r.deductions.latePenalty + r.deductions.unpaidLeave + (r.totalCustomDeductions || 0);
+
+    const calculateNetSalary = (record: PayrollRecord) => {
+        if (record.netSalary !== undefined) return record.netSalary;
+        return calculateTotalGross(record) - calculateTotalDeduction(record);
+    };
 
     const stats = {
         totalNetSalary: payrollData.reduce((acc, r) => acc + calculateNetSalary(r), 0),
@@ -294,19 +302,39 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
         },
         {
             title: 'รายรับอื่นๆ', key: 'earnings', align: 'right',
-            render: (_, r) => (
-                <Tooltip title={`OT: ${formatCurrency(r.earnings.overtime)} | เบี้ยขยัน: ${formatCurrency(r.earnings.diligenceAllowance || 0)} | โบนัส: ${formatCurrency(r.earnings.bonus)}`}>
-                    <Text type="success">+{formatCurrency(r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0))}</Text>
-                </Tooltip>
-            )
+            render: (_, r) => {
+                const standardEarnings = r.earnings.overtime + r.earnings.bonus + (r.earnings.diligenceAllowance || 0);
+                const customEarnings = r.totalCustomIncomes || 0;
+                const totalExtra = standardEarnings + customEarnings;
+                const tooltipParts: string[] = [];
+                if (r.earnings.overtime > 0) tooltipParts.push(`OT: ${formatCurrency(r.earnings.overtime)}`);
+                if (r.earnings.diligenceAllowance && r.earnings.diligenceAllowance > 0) tooltipParts.push(`เบี้ยขยัน: ${formatCurrency(r.earnings.diligenceAllowance)}`);
+                if (r.earnings.bonus > 0) tooltipParts.push(`โบนัส: ${formatCurrency(r.earnings.bonus)}`);
+                r.customIncomes?.forEach(ci => tooltipParts.push(`${ci.name}: ${formatCurrency(ci.amount)}`));
+
+                return (
+                    <Tooltip title={tooltipParts.length > 0 ? tooltipParts.join(' | ') : 'ไม่มีรายรับเพิ่มเติม'}>
+                        <Text type="success">+{formatCurrency(totalExtra)}</Text>
+                    </Tooltip>
+                );
+            }
         },
         {
             title: 'รายการหัก', key: 'deductions', align: 'right',
-            render: (_, r) => (
-                <Tooltip title={`ภาษี: ${formatCurrency(r.deductions.tax)} | SSO: ${formatCurrency(r.deductions.socialSecurity)} | สาย: ${formatCurrency(r.deductions.latePenalty)} | ลาไม่รับเงิน: ${formatCurrency(r.deductions.unpaidLeave)}`}>
-                    <Text type="danger">-{formatCurrency(calculateTotalDeduction(r))}</Text>
-                </Tooltip>
-            )
+            render: (_, r) => {
+                const tooltipParts: string[] = [];
+                if (r.deductions.tax > 0) tooltipParts.push(`ภาษี: ${formatCurrency(r.deductions.tax)}`);
+                if (r.deductions.socialSecurity > 0) tooltipParts.push(`SSO: ${formatCurrency(r.deductions.socialSecurity)}`);
+                if (r.deductions.latePenalty > 0) tooltipParts.push(`สาย: ${formatCurrency(r.deductions.latePenalty)}`);
+                if (r.deductions.unpaidLeave > 0) tooltipParts.push(`ลาไม่รับเงิน: ${formatCurrency(r.deductions.unpaidLeave)}`);
+                r.customDeductions?.forEach(cd => tooltipParts.push(`${cd.name}: ${formatCurrency(cd.amount)}`));
+
+                return (
+                    <Tooltip title={tooltipParts.length > 0 ? tooltipParts.join(' | ') : 'ไม่มีรายการหัก'}>
+                        <Text type="danger">-{formatCurrency(calculateTotalDeduction(r))}</Text>
+                    </Tooltip>
+                );
+            }
         },
         {
             title: 'รายได้สุทธิ', key: 'netSalary', align: 'right',
@@ -464,9 +492,10 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                                 <Text strong style={{ display: 'block', marginBottom: 8 }}>รายได้ (Earnings)</Text>
                                 {[
                                     ['เงินเดือนพื้นฐาน', selectedEmployee.baseSalary],
-                                    ['ค่าล่วงเวลา (OT)', selectedEmployee.earnings.overtime],
-                                    ['เบี้ยขยัน', selectedEmployee.earnings.diligenceAllowance || 0],
-                                    ['โบนัส', selectedEmployee.earnings.bonus],
+                                    ...(selectedEmployee.earnings.overtime > 0 ? [['ค่าล่วงเวลา (OT)', selectedEmployee.earnings.overtime]] : []),
+                                    ...(selectedEmployee.earnings.diligenceAllowance && selectedEmployee.earnings.diligenceAllowance > 0 ? [['เบี้ยขยัน', selectedEmployee.earnings.diligenceAllowance]] : []),
+                                    ...(selectedEmployee.earnings.bonus > 0 ? [['โบนัส', selectedEmployee.earnings.bonus]] : []),
+                                    ...(selectedEmployee.customIncomes?.map(ci => [ci.name, ci.amount]) || [])
                                 ].map(([label, val]) => (
                                     <div key={label as string} className="payslip-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                                         <Text>{label as string}</Text>
@@ -477,10 +506,11 @@ export const Payroll: React.FC<{ initialMonth?: { month: number; year: number } 
                             <div className="payslip-col" style={{ flex: 1, padding: '10px 0 10px 15px' }}>
                                 <Text strong type="danger" style={{ display: 'block', marginBottom: 8 }}>รายการหัก (Deductions)</Text>
                                 {[
-                                    ['ภาษีหัก ณ ที่จ่าย', selectedEmployee.deductions.tax],
-                                    ['ประกันสังคม', selectedEmployee.deductions.socialSecurity],
-                                    ['ค่าปรับมาสาย', selectedEmployee.deductions.latePenalty],
-                                    ['ลาไม่รับค่าจ้าง', selectedEmployee.deductions.unpaidLeave],
+                                    ...(selectedEmployee.deductions.tax > 0 ? [['ภาษีหัก ณ ที่จ่าย', selectedEmployee.deductions.tax]] : []),
+                                    ...(selectedEmployee.deductions.socialSecurity > 0 ? [['ประกันสังคม', selectedEmployee.deductions.socialSecurity]] : []),
+                                    ...(selectedEmployee.deductions.latePenalty > 0 ? [['ค่าปรับมาสาย', selectedEmployee.deductions.latePenalty]] : []),
+                                    ...(selectedEmployee.deductions.unpaidLeave > 0 ? [['ลาไม่รับค่าจ้าง', selectedEmployee.deductions.unpaidLeave]] : []),
+                                    ...(selectedEmployee.customDeductions?.map(cd => [cd.name, cd.amount]) || [])
                                 ].map(([label, val]) => (
                                     <div key={label as string} className="payslip-row" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                                         <Text>{label as string}</Text>

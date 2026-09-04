@@ -1,97 +1,89 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Modal, Row, Col, Card, Typography, Space, Input, message, Popconfirm, Divider, Tabs, Form, Select } from 'antd';
-import { PlusOutlined, DeleteOutlined, EditOutlined, CalculatorOutlined, SettingOutlined, MoneyCollectOutlined, FallOutlined, SaveOutlined } from '@ant-design/icons';
+import {
+    Table, Button, Modal, Row, Col, Card, Typography, Space, Input, message,
+    Popconfirm, Divider, Tabs, Select, Radio, Tag, Switch, Tooltip, Alert
+} from 'antd';
+import {
+    PlusOutlined, DeleteOutlined, EditOutlined, CalculatorOutlined,
+    MoneyCollectOutlined, FallOutlined, LinkOutlined, ArrowRightOutlined
+} from '@ant-design/icons';
 import axios from 'axios';
 
 import { API_BASE_URL as API } from './api';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 const { TabPane } = Tabs;
 
-export const FormulaBuilder: React.FC = () => {
-    const [formulas, setFormulas] = useState<any[]>([]);
-    const [isModalVisible, setIsModalVisible] = useState(false);
-    const [loading, setLoading] = useState(false);
-    
-    // Mappings Form
-    const [mappingForm] = Form.useForm();
-    const [savingMapping, setSavingMapping] = useState(false);
+interface Formula {
+    id: number;
+    name: string;
+    expression: string;
+    description: string;
+    type: 'income' | 'deduction' | 'general';
+    is_active: number | boolean;
+    created_at?: string;
+    updated_at?: string;
+}
 
+export const FormulaBuilder: React.FC = () => {
+    const [formulas, setFormulas] = useState<Formula[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState('1');
+
+    // ── Formula Modal State ──
+    const [isFormulaModalVisible, setIsFormulaModalVisible] = useState(false);
     const [formulaId, setFormulaId] = useState<number | null>(null);
     const [formulaName, setFormulaName] = useState('');
     const [expression, setExpression] = useState('');
     const [description, setDescription] = useState('');
+    const [formulaType, setFormulaType] = useState<'income' | 'deduction' | 'general'>('general');
+    const [formulaIsActive, setFormulaIsActive] = useState(true);
 
-    const fetchFormulasAndSettings = async () => {
+    // ── Add Item to Income/Deduction Modal State ──
+    const [isItemModalVisible, setIsItemModalVisible] = useState(false);
+    const [targetCategory, setTargetCategory] = useState<'income' | 'deduction'>('income');
+    const [itemSelectionMode, setItemSelectionMode] = useState<'existing' | 'new'>('existing');
+    const [selectedFormulaId, setSelectedFormulaId] = useState<number | null>(null);
+
+    const fetchFormulas = async () => {
         setLoading(true);
         try {
-            const [formulasRes, settingsRes] = await Promise.all([
-                axios.get(`${API}/formulas`),
-                axios.get(`${API}/settings`)
-            ]);
-            setFormulas(formulasRes.data);
-            const s = settingsRes.data;
-            mappingForm.setFieldsValue({
-                ot_formula_id: s.ot_formula_id || null,
-                late_formula_id: s.late_formula_id || null,
-                leave_formula_id: s.leave_formula_id || null,
-                diligence_formula_id: s.diligence_formula_id || null
-            });
+            const res = await axios.get(`${API}/formulas`);
+            setFormulas(res.data);
         } catch (err) {
-            console.error('Failed to fetch data', err);
-            message.error('โหลดข้อมูลไม่สำเร็จ');
+            console.error('Failed to fetch formulas', err);
+            message.error('โหลดสูตรการคำนวณไม่สำเร็จ');
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchFormulasAndSettings();
+        fetchFormulas();
     }, []);
 
-    const onSaveMapping = async (values: any) => {
-        setSavingMapping(true);
-        try {
-            // Need to fetch current settings first to preserve other fields
-            const settingsRes = await axios.get(`${API}/settings`);
-            const s = settingsRes.data;
-            const payload = {
-                ...s,
-                company_name: s.company_name || '',
-                tax_id: s.tax_id || '',
-                branch_code: s.branch_code || '00000',
-                address: s.address || '',
-                ot_formula_id: values.ot_formula_id || null,
-                late_formula_id: values.late_formula_id || null,
-                leave_formula_id: values.leave_formula_id || null,
-                diligence_formula_id: values.diligence_formula_id || null
-            };
-            await axios.put(`${API}/settings`, payload);
-            message.success('บันทึกการผูกสูตรสำเร็จ');
-        } catch (err) {
-            console.error('Save mapping failed', err);
-            message.error('เกิดข้อผิดพลาดในการบันทึกการผูกสูตร');
-        } finally {
-            setSavingMapping(false);
-        }
-    };
-
-    const openModal = (formula?: any) => {
+    // ── Open Full Formula Builder Modal ──
+    const openFormulaModal = (formula?: Formula, defaultType?: 'income' | 'deduction' | 'general') => {
         if (formula) {
             setFormulaId(formula.id);
             setFormulaName(formula.name);
             setExpression(formula.expression);
             setDescription(formula.description || '');
+            setFormulaType(formula.type || 'general');
+            setFormulaIsActive(Boolean(formula.is_active !== 0 && formula.is_active !== false));
         } else {
             setFormulaId(null);
             setFormulaName('');
             setExpression('');
             setDescription('');
+            setFormulaType(defaultType || 'general');
+            setFormulaIsActive(true);
         }
-        setIsModalVisible(true);
+        setIsFormulaModalVisible(true);
     };
 
-    const handleSave = async () => {
+    // ── Save Formula ──
+    const handleSaveFormula = async () => {
         if (!formulaName.trim()) {
             return message.warning('กรุณาตั้งชื่อสูตร');
         }
@@ -99,7 +91,13 @@ export const FormulaBuilder: React.FC = () => {
             return message.warning('กรุณาสร้างสูตรคำนวณ');
         }
 
-        const payload = { name: formulaName, expression, description };
+        const payload = {
+            name: formulaName.trim(),
+            expression: expression.trim(),
+            description: description.trim(),
+            type: formulaType,
+            is_active: formulaIsActive ? 1 : 0
+        };
 
         try {
             if (formulaId) {
@@ -109,66 +107,155 @@ export const FormulaBuilder: React.FC = () => {
                 await axios.post(`${API}/formulas`, payload);
                 message.success('เพิ่มสูตรสำเร็จ');
             }
-            setIsModalVisible(false);
-            fetchFormulasAndSettings();
+            setIsFormulaModalVisible(false);
+            fetchFormulas();
         } catch (err) {
             console.error('Save failed', err);
             message.error('บันทึกสูตรไม่สำเร็จ');
         }
     };
 
+    // ── Toggle Formula Status ──
+    const handleToggleStatus = async (id: number, currentStatus: boolean | number) => {
+        const nextStatus = !(currentStatus === 1 || currentStatus === true);
+        try {
+            await axios.patch(`${API}/formulas/${id}/status`, { is_active: nextStatus ? 1 : 0 });
+            message.success(nextStatus ? 'เปิดใช้งานสูตรแล้ว' : 'ปิดใช้งานสูตรแล้ว');
+            setFormulas(prev => prev.map(f => f.id === id ? { ...f, is_active: nextStatus ? 1 : 0 } : f));
+        } catch (err) {
+            message.error('เปลี่ยนสถานะไม่สำเร็จ');
+        }
+    };
+
+    // ── Delete Formula ──
     const handleDelete = async (id: number) => {
         try {
             await axios.delete(`${API}/formulas/${id}`);
             message.success('ลบสูตรสำเร็จ');
-            fetchFormulasAndSettings();
+            fetchFormulas();
         } catch (err) {
             message.error('ลบสูตรไม่สำเร็จ');
         }
     };
 
+    // ── Remove from Income/Deduction (revert to general) ──
+    const handleRevertToGeneral = async (id: number) => {
+        try {
+            await axios.patch(`${API}/formulas/${id}/status`, { type: 'general' });
+            message.success('นำรายการออกจากหมวดหมู่นี้แล้ว');
+            fetchFormulas();
+        } catch (err) {
+            message.error('ดำเนินการไม่สำเร็จ');
+        }
+    };
+
+    // ── Open "Add Item" Modal for Incomes or Deductions ──
+    const openAddItemModal = (cat: 'income' | 'deduction') => {
+        setTargetCategory(cat);
+        setItemSelectionMode('existing');
+        setSelectedFormulaId(null);
+        setIsItemModalVisible(true);
+    };
+
+    // ── Assign existing formula to category ──
+    const handleAssignExisting = async () => {
+        if (!selectedFormulaId) {
+            return message.warning('กรุณาเลือกสูตรที่ต้องการนำมาใช้');
+        }
+        try {
+            await axios.patch(`${API}/formulas/${selectedFormulaId}/status`, {
+                type: targetCategory,
+                is_active: 1
+            });
+            message.success(`นำสูตรมาเป็นรายการ${targetCategory === 'income' ? 'รายได้' : 'รายการหัก'}สำเร็จ`);
+            setIsItemModalVisible(false);
+            fetchFormulas();
+        } catch (err) {
+            message.error('ดำเนินการไม่สำเร็จ');
+        }
+    };
+
     const insertToExpression = (val: string) => {
-        setExpression(prev => prev + ' ' + val);
+        setExpression(prev => (prev ? prev + ' ' : '') + val);
     };
 
     const variables = [
-        { label: 'เงินเดือนฐาน', value: '[เงินเดือนฐาน]' },
-        { label: 'รายวัน (เฉลี่ย)', value: '[รายวัน]' },
-        { label: 'วันทำงานจริง', value: '[วันทำงานจริง]' },
-        { label: 'วันลา (หักเงิน)', value: '[วันลา]' },
-        { label: 'ชั่วโมง OT', value: '[ชั่วโมง_OT]' },
-        { label: 'นาทีมาสาย', value: '[นาทีมาสาย]' },
-        { label: 'เบี้ยขยัน', value: '[เบี้ยขยัน]' },
+        { label: 'เงินเดือนฐาน', value: '[เงินเดือนฐาน]', desc: 'เงินเดือนพนักงาน' },
+        { label: 'รายวัน (เฉลี่ย 30 วัน)', value: '[รายวัน]', desc: 'เงินเดือน / 30' },
+        { label: 'วันทำงานจริง', value: '[วันทำงานจริง]', desc: '30 - วันลาไม่รับเงิน' },
+        { label: 'วันลา (หักเงิน)', value: '[วันลา]', desc: 'จำนวนวันลาไม่รับเงิน' },
+        { label: 'ชั่วโมง OT รวม', value: '[ชั่วโมง_OT]', desc: 'ผลรวมชั่วโมง OT ทุกตัวคูณ' },
+        { label: 'นาทีมาสาย', value: '[นาทีมาสาย]', desc: 'จำนวนนาทีที่มาสายรวม' },
+        { label: 'เบี้ยขยันตั้งต้น', value: '[เบี้ยขยัน]', desc: 'ค่าเบี้ยขยันตามนโยบาย' },
     ];
 
     const operators = ['+', '-', '*', '/', '(', ')'];
-    const numbers = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.', '30', '8', '100'];
+    const numbers = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '0', '.', '30', '8', '100', '1.5', '2.0', '3.0'];
 
-    const columns = [
+    const renderTypeTag = (type: string) => {
+        if (type === 'income') return <Tag color="success" style={{ fontWeight: 500 }}>รายได้ (Income)</Tag>;
+        if (type === 'deduction') return <Tag color="error" style={{ fontWeight: 500 }}>รายการหัก (Deduction)</Tag>;
+        return <Tag color="default">ทั่วไป (General)</Tag>;
+    };
+
+    // Columns for Tab 1: All Formulas
+    const allFormulasColumns = [
         {
             title: 'ชื่อสูตร',
             dataIndex: 'name',
             key: 'name',
-            render: (text: string) => <Text strong>{text}</Text>
+            render: (text: string, record: Formula) => (
+                <div>
+                    <Text strong style={{ fontSize: 15 }}>{text}</Text>
+                    {record.description && (
+                        <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{record.description}</div>
+                    )}
+                </div>
+            )
+        },
+        {
+            title: 'ประเภทรายการ',
+            dataIndex: 'type',
+            key: 'type',
+            width: 170,
+            render: (type: string) => renderTypeTag(type)
         },
         {
             title: 'สูตรการคำนวณ',
             dataIndex: 'expression',
             key: 'expression',
-            render: (text: string) => <Text code>{text}</Text>
+            render: (text: string) => (
+                <Text code style={{ fontSize: 13, background: '#f5f5f5', padding: '4px 8px', borderRadius: 4 }}>
+                    {text}
+                </Text>
+            )
         },
         {
-            title: 'คำอธิบาย',
-            dataIndex: 'description',
-            key: 'description',
+            title: 'สถานะ',
+            dataIndex: 'is_active',
+            key: 'is_active',
+            width: 100,
+            align: 'center' as const,
+            render: (active: any, record: Formula) => (
+                <Switch
+                    checked={active === 1 || active === true}
+                    onChange={() => handleToggleStatus(record.id, active)}
+                    checkedChildren="เปิด"
+                    unCheckedChildren="ปิด"
+                />
+            )
         },
         {
             title: 'จัดการ',
             key: 'action',
-            render: (_: any, record: any) => (
+            width: 140,
+            align: 'center' as const,
+            render: (_: any, record: Formula) => (
                 <Space>
-                    <Button type="link" icon={<EditOutlined />} onClick={() => openModal(record)}>แก้ไข</Button>
-                    <Popconfirm title="ยืนยันการลบสูตรนี้?" onConfirm={() => handleDelete(record.id)}>
+                    <Button type="link" icon={<EditOutlined />} onClick={() => openFormulaModal(record)}>
+                        แก้ไข
+                    </Button>
+                    <Popconfirm title="ยืนยันการลบสูตรนี้?" onConfirm={() => handleDelete(record.id)} okText="ลบ" cancelText="ยกเลิก">
                         <Button type="link" danger icon={<DeleteOutlined />}>ลบ</Button>
                     </Popconfirm>
                 </Space>
@@ -176,155 +263,413 @@ export const FormulaBuilder: React.FC = () => {
         }
     ];
 
+    // Columns for Tab 2 & 3: Category Items
+    const categoryColumns = (cat: 'income' | 'deduction') => [
+        {
+            title: cat === 'income' ? 'ชื่อรายการรายได้' : 'ชื่อรายการหัก',
+            dataIndex: 'name',
+            key: 'name',
+            render: (text: string, record: Formula) => (
+                <div>
+                    <Text strong style={{ fontSize: 15, color: cat === 'income' ? '#237804' : '#cf1322' }}>
+                        {cat === 'income' ? '➕ ' : '➖ '}{text}
+                    </Text>
+                    {record.description && (
+                        <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{record.description}</div>
+                    )}
+                </div>
+            )
+        },
+        {
+            title: 'สูตรที่ใช้คำนวณ',
+            dataIndex: 'expression',
+            key: 'expression',
+            render: (text: string) => (
+                <Text code style={{ fontSize: 13, background: '#fafafa', border: '1px solid #e8e8e8', padding: '4px 8px', borderRadius: 4 }}>
+                    {text}
+                </Text>
+            )
+        },
+        {
+            title: 'คำนวณในเงินเดือน',
+            dataIndex: 'is_active',
+            key: 'is_active',
+            width: 140,
+            align: 'center' as const,
+            render: (active: any, record: Formula) => (
+                <Tooltip title={active ? 'สูตรนี้จะถูกนำไปคำนวณในรอบเงินเดือน' : 'ปิดการคำนวณสูตรนี้ชั่วคราว'}>
+                    <Switch
+                        checked={active === 1 || active === true}
+                        onChange={() => handleToggleStatus(record.id, active)}
+                        checkedChildren="ใช้งาน"
+                        unCheckedChildren="ปิดไว้"
+                    />
+                </Tooltip>
+            )
+        },
+        {
+            title: 'จัดการ',
+            key: 'action',
+            width: 170,
+            align: 'center' as const,
+            render: (_: any, record: Formula) => (
+                <Space>
+                    <Button type="link" icon={<EditOutlined />} onClick={() => openFormulaModal(record, cat)}>
+                        แก้ไขสูตร
+                    </Button>
+                    <Popconfirm
+                        title={`นำรายการนี้ออกจากหมวด${cat === 'income' ? 'รายได้' : 'รายการหัก'}?`}
+                        description="สูตรนี้จะยังคงอยู่ในระบบแต่จะกลายเป็นสูตรทั่วไป ไม่คิดในเงินเดือน"
+                        onConfirm={() => handleRevertToGeneral(record.id)}
+                        okText="นำออก"
+                        cancelText="ยกเลิก"
+                    >
+                        <Button type="link" danger icon={<DeleteOutlined />}>นำออก</Button>
+                    </Popconfirm>
+                </Space>
+            )
+        }
+    ];
+
+    const incomeList = formulas.filter(f => f.type === 'income');
+    const deductionList = formulas.filter(f => f.type === 'deduction');
+    const availableForIncome = formulas.filter(f => f.type !== 'income');
+    const availableForDeduction = formulas.filter(f => f.type !== 'deduction');
+
     return (
-        <div style={{ padding: 24, background: '#f5f5f5', minHeight: '100vh' }}>
-            <Card bordered={false} style={{ borderRadius: 8 }}>
-                <Title level={3} style={{ marginBottom: 24 }}>
-                    <CalculatorOutlined style={{ marginRight: 8, color: '#1890ff' }} />
-                    ระบบตั้งค่าและผูกสูตรคำนวณเงินเดือน
-                </Title>
-                <Tabs defaultActiveKey="1" size="large">
-                    {/* Tab 1: Formula Settings */}
-                    <TabPane tab={<span><CalculatorOutlined /> ตั้งค่าสูตร (Formulas)</span>} key="1">
-                        <div style={{ maxWidth: 1000, padding: '12px 0' }}>
+        <div style={{ padding: 24, background: '#f0f2f5', minHeight: '100vh' }}>
+            <Card bordered={false} style={{ borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                {/* ── Page Header ── */}
+                <div style={{ marginBottom: 20 }}>
+                    <Title level={3} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <CalculatorOutlined style={{ color: '#1890ff' }} />
+                        ระบบสูตรและรายการรายได้-รายหักเงินเดือน
+                    </Title>
+                    <Text type="secondary" style={{ marginTop: 4, display: 'block' }}>
+                        กำหนดสูตรการคำนวณ และระบุรายการรายได้หรือรายการหักเงินเดือนได้ทันที ข้อมูลจะซิงค์ไปยังหน้าประมวลผลเงินเดือนอัตโนมัติ
+                    </Text>
+                </div>
+
+                <Tabs activeKey={activeTab} onChange={setActiveTab} size="large" type="card">
+                    {/* ══════════════════════════════════════════
+                        TAB 1: ALL FORMULAS (ตั้งค่าสูตร)
+                       ══════════════════════════════════════════ */}
+                    <TabPane
+                        tab={
+                            <span>
+                                <CalculatorOutlined /> ตั้งค่าสูตร (Formulas)
+                                <Tag color="blue" style={{ marginLeft: 8 }}>{formulas.length}</Tag>
+                            </span>
+                        }
+                        key="1"
+                    >
+                        <div style={{ padding: '8px 0' }}>
                             <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
                                 <Col>
-                                    <Text type="secondary">สร้างและแก้ไขสูตรคำนวณ สำหรับนำไปใช้กับการคำนวณต่างๆ</Text>
+                                    <Text type="secondary">
+                                        สูตรคำนวณทั้งหมดในระบบ สามารถกำหนดประเภทเป็น <b>รายได้</b> หรือ <b>รายการหัก</b> เพื่อนำไปคิดเงินเดือนได้ทันที
+                                    </Text>
                                 </Col>
                                 <Col>
-                                    <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()} size="middle">
-                                        เพิ่มสูตรใหม่
+                                    <Button
+                                        type="primary"
+                                        icon={<PlusOutlined />}
+                                        onClick={() => openFormulaModal()}
+                                        size="middle"
+                                        style={{ background: '#1890ff' }}
+                                    >
+                                        สร้างสูตรใหม่
                                     </Button>
                                 </Col>
                             </Row>
-                            
+
                             <Table
-                                columns={columns}
+                                columns={allFormulasColumns}
                                 dataSource={formulas}
                                 rowKey="id"
                                 loading={loading}
                                 pagination={{ pageSize: 10 }}
+                                bordered
                             />
                         </div>
                     </TabPane>
 
-                    {/* Tab 2: Formula Mappings */}
-                    <TabPane tab={<span><SettingOutlined /> ผูกสูตร (Mappings)</span>} key="2">
-                        <div style={{ maxWidth: 800, padding: '12px 0' }}>
-                            <Title level={4}>การผูกสูตรเข้ากับระบบเงินเดือน</Title>
-                            <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-                                เลือกสูตรที่คุณสร้างไว้เพื่อนำมาคำนวณในระบบเงินเดือนโดยอัตโนมัติ หากไม่เลือก ระบบจะใช้การคำนวณพื้นฐาน
-                            </Text>
+                    {/* ══════════════════════════════════════════
+                        TAB 2: INCOMES (หน้ารายได้)
+                       ══════════════════════════════════════════ */}
+                    <TabPane
+                        tab={
+                            <span>
+                                <MoneyCollectOutlined style={{ color: '#52c41a' }} /> หน้ารายได้ (Incomes)
+                                <Tag color="green" style={{ marginLeft: 8 }}>{incomeList.length}</Tag>
+                            </span>
+                        }
+                        key="2"
+                    >
+                        <div style={{ padding: '8px 0' }}>
+                            <Alert
+                                message="การทำงานของหน้ารายได้"
+                                description="รายการรายได้ในหน้านี้จะถูกนำไปคำนวณและบวกเพิ่มเป็นรายได้ในรอบเงินเดือน (เช่น ค่าโอที, เบี้ยขยัน, ค่าพาหนะ) คุณสามารถสร้างใหม่หรือดึงจากสูตรที่ตั้งไว้มาเป็นรายได้ได้ทันที"
+                                type="success"
+                                showIcon
+                                style={{ marginBottom: 16, borderRadius: 8 }}
+                            />
 
-                            <Form form={mappingForm} layout="vertical" onFinish={onSaveMapping}>
-                                <Row gutter={24}>
-                                    <Col span={12}>
-                                        <Form.Item name="ot_formula_id" label="สูตรคำนวณค่าล่วงเวลา (OT)">
-                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
-                                                {formulas.map(f => (
-                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
-                                                ))}
-                                            </Select>
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={12}>
-                                        <Form.Item name="late_formula_id" label="สูตรหักเงินมาสาย">
-                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
-                                                {formulas.map(f => (
-                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
-                                                ))}
-                                            </Select>
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-                                <Row gutter={24}>
-                                    <Col span={12}>
-                                        <Form.Item name="leave_formula_id" label="สูตรหักเงินการลางาน (Unpaid Leave)">
-                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
-                                                {formulas.map(f => (
-                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
-                                                ))}
-                                            </Select>
-                                        </Form.Item>
-                                    </Col>
-                                    <Col span={12}>
-                                        <Form.Item name="diligence_formula_id" label="สูตรคำนวณเบี้ยขยัน">
-                                            <Select allowClear placeholder="ไม่มีการผูกสูตร (ใช้ค่าเริ่มต้น)">
-                                                {formulas.map(f => (
-                                                    <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>
-                                                ))}
-                                            </Select>
-                                        </Form.Item>
-                                    </Col>
-                                </Row>
-
-                                <Form.Item style={{ marginTop: 16 }}>
-                                    <Button type="primary" htmlType="submit" icon={<SaveOutlined />} size="large" loading={savingMapping}>
-                                        บันทึกการผูกสูตร
+                            <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+                                <Col>
+                                    <Text strong style={{ fontSize: 16 }}>รายการรายได้ที่ใช้งาน ({incomeList.length} รายการ)</Text>
+                                </Col>
+                                <Col>
+                                    <Button
+                                        type="primary"
+                                        icon={<PlusOutlined />}
+                                        onClick={() => openAddItemModal('income')}
+                                        size="middle"
+                                        style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                                    >
+                                        เพิ่มรายการรายได้
                                     </Button>
-                                </Form.Item>
-                            </Form>
+                                </Col>
+                            </Row>
+
+                            <Table
+                                columns={categoryColumns('income')}
+                                dataSource={incomeList}
+                                rowKey="id"
+                                loading={loading}
+                                pagination={{ pageSize: 10 }}
+                                bordered
+                                locale={{ emptyText: 'ยังไม่มีรายการรายได้ กด "เพิ่มรายการรายได้" เพื่อดึงสูตรมาใช้' }}
+                            />
                         </div>
                     </TabPane>
 
-                    {/* Tab 3: Incomes Placeholder */}
-                    <TabPane tab={<span><MoneyCollectOutlined /> รายได้ (Incomes)</span>} key="3">
-                        <div style={{ padding: '24px 0', textAlign: 'center' }}>
-                            <Title level={4} type="secondary">ฟีเจอร์นี้อยู่ระหว่างการพัฒนา</Title>
-                            <Text type="secondary">พื้นที่สำหรับเพิ่มประเภทรายได้ใหม่แบบกำหนดเอง (Custom Allowances)</Text>
-                        </div>
-                    </TabPane>
+                    {/* ══════════════════════════════════════════
+                        TAB 3: DEDUCTIONS (หน้ารายหัก)
+                       ══════════════════════════════════════════ */}
+                    <TabPane
+                        tab={
+                            <span>
+                                <FallOutlined style={{ color: '#ff4d4f' }} /> หน้ารายหัก (Deductions)
+                                <Tag color="red" style={{ marginLeft: 8 }}>{deductionList.length}</Tag>
+                            </span>
+                        }
+                        key="3"
+                    >
+                        <div style={{ padding: '8px 0' }}>
+                            <Alert
+                                message="การทำงานของหน้ารายหัก"
+                                description="รายการหักในหน้านี้จะถูกนำไปคำนวณและหักออกจากเงินเดือนสุทธิ (เช่น หักประกันสังคม, หักค่าปรับมาสาย, หักลางานไม่รับเงิน) คุณสามารถสร้างใหม่หรือดึงจากสูตรที่ตั้งไว้มาเป็นรายการหักได้ทันที"
+                                type="error"
+                                showIcon
+                                style={{ marginBottom: 16, borderRadius: 8 }}
+                            />
 
-                    {/* Tab 4: Deductions Placeholder */}
-                    <TabPane tab={<span><FallOutlined /> รายการหัก (Deductions)</span>} key="4">
-                        <div style={{ padding: '24px 0', textAlign: 'center' }}>
-                            <Title level={4} type="secondary">ฟีเจอร์นี้อยู่ระหว่างการพัฒนา</Title>
-                            <Text type="secondary">พื้นที่สำหรับเพิ่มประเภทรายการหักใหม่แบบกำหนดเอง (Custom Deductions)</Text>
+                            <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+                                <Col>
+                                    <Text strong style={{ fontSize: 16 }}>รายการหักที่ใช้งาน ({deductionList.length} รายการ)</Text>
+                                </Col>
+                                <Col>
+                                    <Button
+                                        type="primary"
+                                        danger
+                                        icon={<PlusOutlined />}
+                                        onClick={() => openAddItemModal('deduction')}
+                                        size="middle"
+                                    >
+                                        เพิ่มรายการหัก
+                                    </Button>
+                                </Col>
+                            </Row>
+
+                            <Table
+                                columns={categoryColumns('deduction')}
+                                dataSource={deductionList}
+                                rowKey="id"
+                                loading={loading}
+                                pagination={{ pageSize: 10 }}
+                                bordered
+                                locale={{ emptyText: 'ยังไม่มีรายการหัก กด "เพิ่มรายการหัก" เพื่อดึงสูตรมาใช้' }}
+                            />
                         </div>
                     </TabPane>
                 </Tabs>
             </Card>
 
+            {/* ════════════════════════════════════════════════════════════════════
+                MODAL 1: ADD ITEM TO INCOME / DEDUCTION (เลือกสูตรเดิม หรือสร้างใหม่)
+               ════════════════════════════════════════════════════════════════════ */}
             <Modal
-                title={formulaId ? "แก้ไขสูตรคำนวณ" : "สร้างสูตรคำนวณใหม่"}
-                open={isModalVisible}
-                onCancel={() => setIsModalVisible(false)}
-                onOk={handleSave}
-                width={900}
+                title={
+                    <Space>
+                        {targetCategory === 'income' ? <MoneyCollectOutlined style={{ color: '#52c41a' }} /> : <FallOutlined style={{ color: '#ff4d4f' }} />}
+                        <span>เพิ่มรายการ{targetCategory === 'income' ? 'รายได้' : 'รายการหักเงิน'}</span>
+                    </Space>
+                }
+                open={isItemModalVisible}
+                onCancel={() => setIsItemModalVisible(false)}
+                footer={null}
+                width={600}
+                destroyOnClose
+            >
+                <div style={{ padding: '10px 0' }}>
+                    <div style={{ marginBottom: 20, textAlign: 'center' }}>
+                        <Radio.Group
+                            value={itemSelectionMode}
+                            onChange={e => setItemSelectionMode(e.target.value)}
+                            buttonStyle="solid"
+                            size="large"
+                        >
+                            <Radio.Button value="existing">
+                                <LinkOutlined /> ดึงจากสูตรที่ตั้งไว้แล้ว
+                            </Radio.Button>
+                            <Radio.Button value="new">
+                                <PlusOutlined /> สร้างสูตรใหม่ทันที
+                            </Radio.Button>
+                        </Radio.Group>
+                    </div>
+
+                    {itemSelectionMode === 'existing' ? (
+                        <div>
+                            <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                                เลือกสูตรเพื่อนำมาเป็นรายการ{targetCategory === 'income' ? 'รายได้' : 'รายการหัก'}:
+                            </Text>
+                            <Select
+                                placeholder="เลือกสูตรจากรายการที่มี..."
+                                style={{ width: '100%', marginBottom: 16 }}
+                                size="large"
+                                value={selectedFormulaId}
+                                onChange={setSelectedFormulaId}
+                            >
+                                {(targetCategory === 'income' ? availableForIncome : availableForDeduction).map(f => (
+                                    <Select.Option key={f.id} value={f.id}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontWeight: 500 }}>{f.name}</span>
+                                            <span style={{ fontSize: 12, color: '#888', fontFamily: 'monospace' }}>{f.expression}</span>
+                                        </div>
+                                    </Select.Option>
+                                ))}
+                            </Select>
+
+                            {(targetCategory === 'income' ? availableForIncome : availableForDeduction).length === 0 && (
+                                <Text type="secondary" style={{ display: 'block', marginBottom: 16, color: '#fa8c16' }}>
+                                    ไม่มีสูตรที่ว่างอยู่ กรุณาเลือก "สร้างสูตรใหม่ทันที" เพื่อสร้างสูตรใหม่
+                                </Text>
+                            )}
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 24 }}>
+                                <Button onClick={() => setIsItemModalVisible(false)}>ยกเลิก</Button>
+                                <Button
+                                    type="primary"
+                                    onClick={handleAssignExisting}
+                                    disabled={!selectedFormulaId}
+                                    style={targetCategory === 'income' ? { background: '#52c41a', borderColor: '#52c41a' } : { background: '#ff4d4f', borderColor: '#ff4d4f' }}
+                                >
+                                    ยืนยันนำมาเป็น{targetCategory === 'income' ? 'รายได้' : 'รายการหัก'}
+                                </Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                            <Paragraph type="secondary">
+                                เปิดหน้าต่างสร้างสูตรคำนวณ พร้อมกำหนดเป็น <b>{targetCategory === 'income' ? 'รายได้' : 'รายการหัก'}</b> โดยอัตโนมัติ
+                            </Paragraph>
+                            <Button
+                                type="primary"
+                                icon={<ArrowRightOutlined />}
+                                size="large"
+                                onClick={() => {
+                                    setIsItemModalVisible(false);
+                                    openFormulaModal(undefined, targetCategory);
+                                }}
+                                style={targetCategory === 'income' ? { background: '#52c41a', borderColor: '#52c41a' } : { background: '#ff4d4f', borderColor: '#ff4d4f' }}
+                            >
+                                ไปยังหน้าต่างสร้างสูตรใหม่
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            </Modal>
+
+            {/* ════════════════════════════════════════════════════════════════════
+                MODAL 2: FORMULA BUILDER / EDITOR
+               ════════════════════════════════════════════════════════════════════ */}
+            <Modal
+                title={
+                    <Space>
+                        <CalculatorOutlined style={{ color: '#1890ff' }} />
+                        <span>{formulaId ? 'แก้ไขสูตรคำนวณ' : 'สร้างสูตรคำนวณใหม่'}</span>
+                    </Space>
+                }
+                open={isFormulaModalVisible}
+                onCancel={() => setIsFormulaModalVisible(false)}
+                onOk={handleSaveFormula}
+                width={950}
                 okText="บันทึกสูตร"
                 cancelText="ยกเลิก"
+                destroyOnClose
             >
-                <Row gutter={24}>
-                    {/* Left Column - Formula Tools */}
+                <Row gutter={24} style={{ marginTop: 8 }}>
+                    {/* ── Left Column: Formula Tools ── */}
                     <Col span={12}>
-                        <Card size="small" title="เครื่องมือสร้างสูตร" bordered style={{ background: '#fafafa' }}>
+                        <Card
+                            size="small"
+                            title="เครื่องมือสร้างสูตร (กดเพื่อแทรกลงในสูตร)"
+                            bordered
+                            style={{ background: '#fafafa', borderRadius: 8 }}
+                        >
+                            {/* Variables */}
                             <div style={{ marginBottom: 16 }}>
-                                <Text strong>ข้อมูลในระบบ (Variables)</Text>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                                <Text strong style={{ fontSize: 13, color: '#1890ff' }}>📌 ข้อมูลในระบบ (Variables)</Text>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                                     {variables.map(v => (
-                                        <Button key={v.value} size="small" type="primary" ghost onClick={() => insertToExpression(v.value)}>
-                                            {v.label}
-                                        </Button>
+                                        <Tooltip key={v.value} title={v.desc}>
+                                            <Button
+                                                size="small"
+                                                type="primary"
+                                                ghost
+                                                onClick={() => insertToExpression(v.value)}
+                                                style={{ borderRadius: 4 }}
+                                            >
+                                                {v.label}
+                                            </Button>
+                                        </Tooltip>
                                     ))}
                                 </div>
                             </div>
+
                             <Divider style={{ margin: '12px 0' }} />
+
+                            {/* Operators */}
                             <div style={{ marginBottom: 16 }}>
-                                <Text strong>เครื่องหมาย (Operators)</Text>
-                                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                <Text strong style={{ fontSize: 13, color: '#722ed1' }}>➕ เครื่องหมายคำนวณ (Operators)</Text>
+                                <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                                     {operators.map(op => (
-                                        <Button key={op} size="small" type="default" onClick={() => insertToExpression(op)} style={{ fontWeight: 'bold' }}>
+                                        <Button
+                                            key={op}
+                                            size="middle"
+                                            onClick={() => insertToExpression(op)}
+                                            style={{ fontWeight: 'bold', width: 42, height: 36, fontSize: 16 }}
+                                        >
                                             {op}
                                         </Button>
                                     ))}
                                 </div>
                             </div>
+
                             <Divider style={{ margin: '12px 0' }} />
+
+                            {/* Numbers */}
                             <div>
-                                <Text strong>ตัวเลข (Numbers)</Text>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, maxWidth: 200 }}>
+                                <Text strong style={{ fontSize: 13, color: '#fa8c16' }}>🔢 ตัวเลขและค่าคงที่ (Numbers)</Text>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                                     {numbers.map(n => (
-                                        <Button key={n} size="small" onClick={() => insertToExpression(n)}>
+                                        <Button
+                                            key={n}
+                                            size="small"
+                                            onClick={() => insertToExpression(n)}
+                                            style={{ minWidth: 36, height: 32 }}
+                                        >
                                             {n}
                                         </Button>
                                     ))}
@@ -333,40 +678,89 @@ export const FormulaBuilder: React.FC = () => {
                         </Card>
                     </Col>
 
-                    {/* Right Column - Formula Preview */}
+                    {/* ── Right Column: Formula Details ── */}
                     <Col span={12}>
-                        <Card size="small" title="ผลลัพธ์สูตร (Formula Result)" bordered style={{ height: '100%' }}>
-                            <div style={{ marginBottom: 16 }}>
+                        <Card
+                            size="small"
+                            title="รายละเอียดและผลลัพธ์สูตร"
+                            bordered
+                            style={{ borderRadius: 8, height: '100%' }}
+                        >
+                            {/* Formula Name */}
+                            <div style={{ marginBottom: 14 }}>
                                 <Text strong>ชื่อสูตร <Text type="danger">*</Text></Text>
-                                <Input 
-                                    placeholder="เช่น สูตรคำนวณ OT วันหยุด" 
-                                    value={formulaName} 
-                                    onChange={e => setFormulaName(e.target.value)} 
-                                    style={{ marginTop: 8 }}
+                                <Input
+                                    placeholder="เช่น ค่าโอที 1.5 เท่า, หักประกันสังคม, เบี้ยขยัน"
+                                    value={formulaName}
+                                    onChange={e => setFormulaName(e.target.value)}
+                                    style={{ marginTop: 6 }}
                                 />
-                            </div>
-                            
-                            <div style={{ marginBottom: 16 }}>
-                                <Text strong>สมการ <Text type="danger">*</Text></Text>
-                                <Input.TextArea 
-                                    value={expression} 
-                                    onChange={e => setExpression(e.target.value)}
-                                    rows={4}
-                                    style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 16 }}
-                                    placeholder="กดปุ่มทางซ้ายเพื่อสร้างสมการ หรือพิมพ์เองได้ที่นี่..."
-                                />
-                                <div style={{ marginTop: 8, textAlign: 'right' }}>
-                                    <Button size="small" danger onClick={() => setExpression('')}>ล้างสูตร (Clear)</Button>
-                                </div>
                             </div>
 
-                            <div>
+                            {/* Formula Type (Category) */}
+                            <div style={{ marginBottom: 14 }}>
+                                <Text strong style={{ display: 'block', marginBottom: 6 }}>
+                                    ประเภทรายการ (นำไปใช้เป็น) <Text type="danger">*</Text>
+                                </Text>
+                                <Radio.Group
+                                    value={formulaType}
+                                    onChange={e => setFormulaType(e.target.value)}
+                                    buttonStyle="solid"
+                                    style={{ width: '100%' }}
+                                >
+                                    <Radio.Button value="income" style={{ width: '33.33%', textAlign: 'center' }}>
+                                        <span style={{ color: formulaType === 'income' ? '#fff' : '#52c41a', fontWeight: 600 }}>🟢 รายได้</span>
+                                    </Radio.Button>
+                                    <Radio.Button value="deduction" style={{ width: '33.33%', textAlign: 'center' }}>
+                                        <span style={{ color: formulaType === 'deduction' ? '#fff' : '#ff4d4f', fontWeight: 600 }}>🔴 รายการหัก</span>
+                                    </Radio.Button>
+                                    <Radio.Button value="general" style={{ width: '33.33%', textAlign: 'center' }}>
+                                        <span>⚪ ทั่วไป</span>
+                                    </Radio.Button>
+                                </Radio.Group>
+                                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+                                    {formulaType === 'income' && '✨ รายการนี้จะไปปรากฏใน "หน้ารายได้" และถูกบวกเพิ่มในรอบเงินเดือน'}
+                                    {formulaType === 'deduction' && '✨ รายการนี้จะไปปรากฏใน "หน้ารายหัก" และถูกหักออกจากเงินเดือน'}
+                                    {formulaType === 'general' && 'สูตรทั่วไป ไม่นำไปบวกหรือหักในเงินเดือนโดยตรง'}
+                                </Text>
+                            </div>
+
+                            {/* Expression */}
+                            <div style={{ marginBottom: 14 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Text strong>สมการการคำนวณ <Text type="danger">*</Text></Text>
+                                    <Button size="small" type="link" danger onClick={() => setExpression('')}>
+                                        ล้างสมการ
+                                    </Button>
+                                </div>
+                                <Input.TextArea
+                                    value={expression}
+                                    onChange={e => setExpression(e.target.value)}
+                                    rows={4}
+                                    style={{ marginTop: 6, fontFamily: 'monospace', fontSize: 15, background: '#fafafa' }}
+                                    placeholder="กดปุ่มจากเครื่องมือทางซ้าย หรือพิมพ์สมการที่นี่..."
+                                />
+                            </div>
+
+                            {/* Description */}
+                            <div style={{ marginBottom: 14 }}>
                                 <Text strong>คำอธิบายเพิ่มเติม</Text>
-                                <Input 
-                                    placeholder="อธิบายว่าสูตรนี้ใช้ทำอะไร..." 
-                                    value={description} 
-                                    onChange={e => setDescription(e.target.value)} 
-                                    style={{ marginTop: 8 }}
+                                <Input
+                                    placeholder="เช่น คำนวณค่าล่วงเวลาวันทำงานปกติ"
+                                    value={description}
+                                    onChange={e => setDescription(e.target.value)}
+                                    style={{ marginTop: 6 }}
+                                />
+                            </div>
+
+                            {/* Active Switch */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6 }}>
+                                <Text strong>เปิดใช้งานสูตรนี้</Text>
+                                <Switch
+                                    checked={formulaIsActive}
+                                    onChange={setFormulaIsActive}
+                                    checkedChildren="เปิด"
+                                    unCheckedChildren="ปิด"
                                 />
                             </div>
                         </Card>
@@ -376,3 +770,5 @@ export const FormulaBuilder: React.FC = () => {
         </div>
     );
 };
+
+export default FormulaBuilder;

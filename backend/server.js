@@ -1037,6 +1037,27 @@ app.put('/api/settings', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
+// 🧠 PAYROLL FORMULA EVALUATION HELPER
+// ─────────────────────────────────────────────
+function evaluateFormula(expression, variables) {
+    if (!expression) return 0;
+    let evalStr = expression;
+    // Replace variables (e.g. [เงินเดือนฐาน])
+    for (const [key, value] of Object.entries(variables)) {
+        evalStr = evalStr.replace(new RegExp('\\\\[' + key + '\\\\]', 'g'), Number(value) || 0);
+    }
+    // Remove any remaining unreplaced variables
+    evalStr = evalStr.replace(/\\[.*?\\]/g, '0');
+    try {
+        const result = Function(`'use strict'; return (${evalStr})`)();
+        return isNaN(result) ? 0 : Math.max(0, Math.round(result * 100) / 100);
+    } catch (e) {
+        console.error('Formula evaluation error:', e);
+        return 0;
+    }
+}
+
+// ─────────────────────────────────────────────
 // 🧠 PAYROLL — GET (ดึงจาก payroll_records ถ้ามี, ไม่มีดึง preview)
 // ─────────────────────────────────────────────
 app.get('/api/payroll', async (req, res) => {
@@ -1056,27 +1077,46 @@ app.get('/api/payroll', async (req, res) => {
         `, [month, year]);
 
         if (saved.length > 0) {
-            const result = saved.map(r => ({
-                employeeId: r.employee_code,
-                employee_id: r.employee_id,
-                name: `${r.title || ''} ${r.first_name || ''} ${r.last_name || ''}`.trim(),
-                department: r.department || 'ไม่ระบุ',
-                baseSalary: parseFloat(r.base_salary),
-                earnings: {
-                    overtime: parseFloat(r.overtime_pay),
-                    bonus: parseFloat(r.bonus),
-                    diligenceAllowance: parseFloat(r.diligence_allowance || 0),
-                },
-                deductions: {
-                    tax: parseFloat(r.tax_deduction),
-                    socialSecurity: parseFloat(r.sso_deduction),
-                    latePenalty: parseFloat(r.late_deduction),
-                    unpaidLeave: parseFloat(r.leave_deduction),
-                },
-                netSalary: parseFloat(r.net_salary),
-                status: r.status,
-                period: { month, year },
-            }));
+            const result = saved.map(r => {
+                let parsedCustomIncomes = [];
+                let parsedCustomDeductions = [];
+                try {
+                    if (r.custom_incomes) {
+                        parsedCustomIncomes = typeof r.custom_incomes === 'string' ? JSON.parse(r.custom_incomes) : r.custom_incomes;
+                    }
+                } catch (e) { parsedCustomIncomes = []; }
+                try {
+                    if (r.custom_deductions) {
+                        parsedCustomDeductions = typeof r.custom_deductions === 'string' ? JSON.parse(r.custom_deductions) : r.custom_deductions;
+                    }
+                } catch (e) { parsedCustomDeductions = []; }
+
+                return {
+                    employeeId: r.employee_code,
+                    employee_id: r.employee_id,
+                    name: `${r.title || ''} ${r.first_name || ''} ${r.last_name || ''}`.trim(),
+                    department: r.department || 'ไม่ระบุ',
+                    baseSalary: parseFloat(r.base_salary),
+                    earnings: {
+                        overtime: parseFloat(r.overtime_pay || 0),
+                        bonus: parseFloat(r.bonus || 0),
+                        diligenceAllowance: parseFloat(r.diligence_allowance || 0),
+                    },
+                    deductions: {
+                        tax: parseFloat(r.tax_deduction || 0),
+                        socialSecurity: parseFloat(r.sso_deduction || 0),
+                        latePenalty: parseFloat(r.late_deduction || 0),
+                        unpaidLeave: parseFloat(r.leave_deduction || 0),
+                    },
+                    customIncomes: parsedCustomIncomes,
+                    customDeductions: parsedCustomDeductions,
+                    totalCustomIncomes: parseFloat(r.total_custom_incomes || 0),
+                    totalCustomDeductions: parseFloat(r.total_custom_deductions || 0),
+                    netSalary: parseFloat(r.net_salary),
+                    status: r.status,
+                    period: { month, year },
+                };
+            });
             return res.json(result);
         }
 
@@ -1087,6 +1127,18 @@ app.get('/api/payroll', async (req, res) => {
         const latePenaltyPerMin = parseFloat(settings.late_penalty_per_minute || 0);
         const autoDeductTax = settings.auto_deduct_tax !== 0;
         const autoDeductSSO = settings.auto_deduct_sso !== 0;
+
+        // ดึงสูตรประเภทรายได้และรายหักที่เปิดใช้งาน
+        let incomeFormulas = [];
+        let deductionFormulas = [];
+        try {
+            const [inf] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'income' AND is_active = 1");
+            incomeFormulas = inf;
+            const [def] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'deduction' AND is_active = 1");
+            deductionFormulas = def;
+        } catch (err) {
+            console.warn('Formulas fetch error in preview:', err.message);
+        }
 
         const [employees] = await pool.query(`
             SELECT e.id, e.employee_code, e.title, e.first_name, e.last_name,
@@ -1139,33 +1191,75 @@ app.get('/api/payroll', async (req, res) => {
         const preview = employees.map(e => {
             const baseSalary = parseFloat(e.base_salary || 0);
             const att = attendanceMap[e.id];
-            
+            const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
+            const lv = leaveMap[e.id];
+            const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
+            const otHours = (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0);
+
+            const variables = {
+                'เงินเดือนฐาน': baseSalary,
+                'รายวัน': baseSalary / 30,
+                'วันทำงานจริง': 30 - unpaidDays,
+                'วันลา': unpaidDays,
+                'ชั่วโมง_OT': otHours,
+                'นาทีมาสาย': lateMinutes,
+                'เบี้ยขยัน': diligenceAllowance,
+                'เบี้ยขยันตั้งต้น': diligenceAllowance
+            };
+
+            // Evaluate Custom Incomes
+            const customIncomesList = [];
+            let totalCustomIncomes = 0;
+            let hasCustomOT = false;
+            let hasCustomDiligence = false;
+
+            for (const form of incomeFormulas) {
+                const amt = evaluateFormula(form.expression, variables);
+                customIncomesList.push({ id: form.id, name: form.name, amount: amt });
+                totalCustomIncomes += amt;
+                if (form.name.includes('โอที') || form.name.toLowerCase().includes('ot')) hasCustomOT = true;
+                if (form.name.includes('เบี้ยขยัน')) hasCustomDiligence = true;
+            }
+
             // OT
             const empOt = otMap[e.id] || {};
             const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
             const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
             const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
-            const totalOT = ot1_5_pay + ot2_pay + ot3_pay;
+            const totalOT = hasCustomOT ? 0 : (ot1_5_pay + ot2_pay + ot3_pay);
 
             // PVF
             const pvfEmployee = Math.floor(baseSalary * (parseFloat(e.pvf_rate || 0) / 100));
             const pvfEmployer = Math.floor(baseSalary * (parseFloat(e.pvf_employer_rate || 0) / 100));
 
-            // ค่าปรับสาย
-            const totalLateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
-            const latePenalty = Math.floor(totalLateMinutes * latePenaltyPerMin);
+            // Evaluate Custom Deductions
+            const customDeductionsList = [];
+            let totalCustomDeductions = 0;
+            let hasCustomLate = false;
+            let hasCustomLeave = false;
+            let hasCustomSSO = false;
 
-            // หักลา
-            const lv = leaveMap[e.id];
-            const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
-            const unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
+            for (const form of deductionFormulas) {
+                const amt = evaluateFormula(form.expression, variables);
+                customDeductionsList.push({ id: form.id, name: form.name, amount: amt });
+                totalCustomDeductions += amt;
+                if (form.name.includes('สาย')) hasCustomLate = true;
+                if (form.name.includes('ลา')) hasCustomLeave = true;
+                if (form.name.includes('ประกันสังคม')) hasCustomSSO = true;
+            }
 
-            // เบี้ยขยัน (เงื่อนไขอัตโนมัติ: ไม่สาย และไม่มีลาไม่รับเงิน)
-            const earnedDiligence = (totalLateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
+            // ค่าปรับสาย & หักลา
+            const latePenalty = hasCustomLate ? 0 : Math.floor(lateMinutes * latePenaltyPerMin);
+            const unpaidLeaveDeduction = hasCustomLeave ? 0 : Math.floor((baseSalary / 30) * unpaidDays);
 
-            // ภาษี (PIT) - ส่ง allowances ไปคำนวณ
+            // เบี้ยขยัน
+            const earnedDiligence = hasCustomDiligence ? 0 : ((lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0);
+
+            // ภาษี & SSO
             const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
-            const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary) : 0;
+            const ssoDeduction = hasCustomSSO ? 0 : (autoDeductSSO ? calculateSSO(baseSalary) : 0);
+
+            const netSalary = baseSalary + totalOT + earnedDiligence + totalCustomIncomes - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee - totalCustomDeductions;
 
             return {
                 employeeId: e.employee_code,
@@ -1175,8 +1269,12 @@ app.get('/api/payroll', async (req, res) => {
                 baseSalary,
                 earnings: { overtime: totalOT, bonus: 0, diligenceAllowance: earnedDiligence, ot1_5_pay, ot2_pay, ot3_pay },
                 deductions: { tax: taxDeduction, socialSecurity: ssoDeduction, latePenalty, unpaidLeave: unpaidLeaveDeduction, pvfEmployee },
+                customIncomes: customIncomesList,
+                customDeductions: customDeductionsList,
+                totalCustomIncomes,
+                totalCustomDeductions,
                 pvfEmployer,
-                netSalary: baseSalary + totalOT + earnedDiligence - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee,
+                netSalary,
                 status: 'draft',
                 period: { month, year },
                 isPreview: true,
@@ -1192,24 +1290,6 @@ app.get('/api/payroll', async (req, res) => {
 // ─────────────────────────────────────────────
 // 🧠 PAYROLL — CALCULATE & SAVE to payroll_records
 // ─────────────────────────────────────────────
-
-function evaluateFormula(expression, variables) {
-    if (!expression) return 0;
-    let evalStr = expression;
-    // Replace variables (e.g. [เงินเดือนฐาน])
-    for (const [key, value] of Object.entries(variables)) {
-        evalStr = evalStr.replace(new RegExp('\\\\[' + key + '\\\\]', 'g'), value);
-    }
-    // Remove any remaining unreplaced variables
-    evalStr = evalStr.replace(/\\[.*?\\]/g, '0');
-    try {
-        return Math.floor(Function(`'use strict'; return (${evalStr})`)());
-    } catch (e) {
-        console.error('Formula evaluation error:', e);
-        return 0;
-    }
-}
-
 app.post('/api/payroll/calculate', async (req, res) => {
     try {
         const month = parseInt(req.body.month) || dayjs().month() + 1;
@@ -1224,9 +1304,17 @@ app.post('/api/payroll/calculate', async (req, res) => {
         const autoDeductTax = settings.auto_deduct_tax !== 0;
         const autoDeductSSO = settings.auto_deduct_sso !== 0;
 
-        const [formulaRows] = await pool.query('SELECT id, expression FROM payroll_formulas');
-        const formulaMap = {};
-        formulaRows.forEach(f => formulaMap[f.id] = f.expression);
+        // ดึงสูตรประเภทรายได้และรายหักที่เปิดใช้งาน
+        let incomeFormulas = [];
+        let deductionFormulas = [];
+        try {
+            const [inf] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'income' AND is_active = 1");
+            incomeFormulas = inf;
+            const [def] = await pool.query("SELECT * FROM payroll_formulas WHERE type = 'deduction' AND is_active = 1");
+            deductionFormulas = def;
+        } catch (err) {
+            console.warn('Formulas fetch error in calculate:', err.message);
+        }
 
         const [employees] = await pool.query(`
             SELECT e.id, e.employee_code, CONCAT(e.first_name, ' ', e.last_name) as name,
@@ -1290,47 +1378,63 @@ app.post('/api/payroll/calculate', async (req, res) => {
             const lateMinutes = att ? parseInt(att.total_late_minutes || 0) : 0;
             const lv = leaveMap[e.id];
             const unpaidDays = lv ? parseFloat(lv.unpaid_days || 0) : 0;
-            
+            const otHours = (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0);
+
             const variables = {
                 'เงินเดือนฐาน': baseSalary,
                 'รายวัน': baseSalary / 30,
                 'วันทำงานจริง': 30 - unpaidDays,
                 'วันลา': unpaidDays,
-                'ชั่วโมง_OT': (otMap[e.id]?.['1.5'] || 0) + (otMap[e.id]?.['2.0'] || otMap[e.id]?.['2'] || 0) + (otMap[e.id]?.['3.0'] || otMap[e.id]?.['3'] || 0),
+                'ชั่วโมง_OT': otHours,
                 'นาทีมาสาย': lateMinutes,
+                'เบี้ยขยัน': diligenceAllowance,
                 'เบี้ยขยันตั้งต้น': diligenceAllowance
             };
 
+            // Evaluate Custom Incomes
+            const customIncomesList = [];
+            let totalCustomIncomes = 0;
+            let hasCustomOT = false;
+            let hasCustomDiligence = false;
+
+            for (const form of incomeFormulas) {
+                const amt = evaluateFormula(form.expression, variables);
+                customIncomesList.push({ id: form.id, name: form.name, amount: amt });
+                totalCustomIncomes += amt;
+                if (form.name.includes('โอที') || form.name.toLowerCase().includes('ot')) hasCustomOT = true;
+                if (form.name.includes('เบี้ยขยัน')) hasCustomDiligence = true;
+            }
+
             // OT Calculation
             const empOt = otMap[e.id] || {};
-            let ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
-            let ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
-            let ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
-            let totalOT = ot1_5_pay + ot2_pay + ot3_pay;
+            const ot1_5_pay = calculateOTPay(baseSalary, empOt['1.5'] || 0, 1.5);
+            const ot2_pay = calculateOTPay(baseSalary, empOt['2.0'] || empOt['2'] || 0, 2.0);
+            const ot3_pay = calculateOTPay(baseSalary, empOt['3.0'] || empOt['3'] || 0, 3.0);
+            const totalOT = hasCustomOT ? 0 : (ot1_5_pay + ot2_pay + ot3_pay);
 
-            if (settings.ot_formula_id && formulaMap[settings.ot_formula_id]) {
-                totalOT = evaluateFormula(formulaMap[settings.ot_formula_id], variables);
-                ot1_5_pay = totalOT; ot2_pay = 0; ot3_pay = 0; // If using formula, aggregate it to 1.5 to not lose data
+            // Health/Deductions & Custom Deductions
+            const customDeductionsList = [];
+            let totalCustomDeductions = 0;
+            let hasCustomLate = false;
+            let hasCustomLeave = false;
+            let hasCustomSSO = false;
+
+            for (const form of deductionFormulas) {
+                const amt = evaluateFormula(form.expression, variables);
+                customDeductionsList.push({ id: form.id, name: form.name, amount: amt });
+                totalCustomDeductions += amt;
+                if (form.name.includes('สาย')) hasCustomLate = true;
+                if (form.name.includes('ลา')) hasCustomLeave = true;
+                if (form.name.includes('ประกันสังคม')) hasCustomSSO = true;
             }
 
-            // Health/Deductions
-            let latePenalty = Math.floor(lateMinutes * latePenaltyPerMin);
-            if (settings.late_formula_id && formulaMap[settings.late_formula_id]) {
-                latePenalty = evaluateFormula(formulaMap[settings.late_formula_id], variables);
-            }
-
-            let unpaidLeaveDeduction = Math.floor((baseSalary / 30) * unpaidDays);
-            if (settings.leave_formula_id && formulaMap[settings.leave_formula_id]) {
-                unpaidLeaveDeduction = evaluateFormula(formulaMap[settings.leave_formula_id], variables);
-            }
+            const latePenalty = hasCustomLate ? 0 : Math.floor(lateMinutes * latePenaltyPerMin);
+            const unpaidLeaveDeduction = hasCustomLeave ? 0 : Math.floor((baseSalary / 30) * unpaidDays);
 
             const cl = claimsMap[e.id];
             const totalClaims = cl ? parseFloat(cl.total_claims || 0) : 0;
             
-            let earnedDiligence = (lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0;
-            if (settings.diligence_formula_id && formulaMap[settings.diligence_formula_id]) {
-                earnedDiligence = evaluateFormula(formulaMap[settings.diligence_formula_id], variables);
-            }
+            const earnedDiligence = hasCustomDiligence ? 0 : ((lateMinutes === 0 && unpaidDays === 0) ? diligenceAllowance : 0);
 
             // PVF
             const pvfEmployee = Math.floor(baseSalary * (parseFloat(e.pvf_rate || 0) / 100));
@@ -1338,9 +1442,11 @@ app.post('/api/payroll/calculate', async (req, res) => {
             
             // Tax & SSO
             const taxDeduction = autoDeductTax ? calculateIncomeTax(baseSalary, e) : 0;
-            const ssoDeduction = autoDeductSSO ? calculateSSO(baseSalary) : 0;
+            const ssoDeduction = hasCustomSSO ? 0 : (autoDeductSSO ? calculateSSO(baseSalary) : 0);
 
-            const netSalary = baseSalary + totalOT + earnedDiligence + totalClaims - taxDeduction - ssoDeduction - latePenalty - unpaidLeaveDeduction - pvfEmployee;
+            const totalGross = baseSalary + totalOT + earnedDiligence + totalClaims + totalCustomIncomes;
+            const totalDeductions = taxDeduction + ssoDeduction + latePenalty + unpaidLeaveDeduction + pvfEmployee + totalCustomDeductions;
+            const netSalary = totalGross - totalDeductions;
 
             // Upsert
             await pool.query(
@@ -1351,10 +1457,15 @@ app.post('/api/payroll/calculate', async (req, res) => {
                 INSERT INTO payroll_records 
                     (employee_id, period_month, period_year, base_salary, overtime_pay, bonus,
                      late_deduction, leave_deduction, tax_deduction, sso_deduction, diligence_allowance, claims_total, net_salary, 
-                     pvf_employee_amount, pvf_employer_amount, ot_1_5_pay, ot_2_pay, ot_3_pay, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
-            `, [e.id, month, year, baseSalary, totalOT, 0, latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, totalClaims, netSalary,
-                pvfEmployee, pvfEmployer, ot1_5_pay, ot2_pay, ot3_pay]);
+                     pvf_employee_amount, pvf_employer_amount, ot_1_5_pay, ot_2_pay, ot_3_pay, 
+                     custom_incomes, custom_deductions, total_custom_incomes, total_custom_deductions, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')
+            `, [
+                e.id, month, year, baseSalary, totalOT, 0, 
+                latePenalty, unpaidLeaveDeduction, taxDeduction, ssoDeduction, earnedDiligence, totalClaims, netSalary,
+                pvfEmployee, pvfEmployer, ot1_5_pay, ot2_pay, ot3_pay,
+                JSON.stringify(customIncomesList), JSON.stringify(customDeductionsList), totalCustomIncomes, totalCustomDeductions
+            ]);
             
             const payrollId = payrollRes.insertId;
 
@@ -2533,17 +2644,25 @@ app.get('/api/admin/audit-logs', async (req, res) => {
 // ─────────────────────────────────────────────
 app.get('/api/formulas', async (req, res) => {
     try {
-        const [rows] = await pool.query('SELECT * FROM payroll_formulas ORDER BY created_at DESC');
+        const { type } = req.query;
+        let sql = 'SELECT * FROM payroll_formulas';
+        const params = [];
+        if (type) {
+            sql += ' WHERE type = ?';
+            params.push(type);
+        }
+        sql += ' ORDER BY created_at DESC';
+        const [rows] = await pool.query(sql, params);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/formulas', async (req, res) => {
     try {
-        const { name, expression, description } = req.body;
+        const { name, expression, description, type = 'general', is_active = 1 } = req.body;
         const [result] = await pool.query(
-            'INSERT INTO payroll_formulas (name, expression, description) VALUES (?, ?, ?)',
-            [name, expression, description]
+            'INSERT INTO payroll_formulas (name, expression, description, type, is_active) VALUES (?, ?, ?, ?, ?)',
+            [name, expression, description, type, is_active ? 1 : 0]
         );
         res.status(201).json({ id: result.insertId.toString(), message: 'Formula created successfully' });
     } catch (error) { res.status(500).json({ error: error.message }); }
@@ -2552,12 +2671,34 @@ app.post('/api/formulas', async (req, res) => {
 app.put('/api/formulas/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, expression, description } = req.body;
+        const { name, expression, description, type = 'general', is_active = 1 } = req.body;
         await pool.query(
-            'UPDATE payroll_formulas SET name = ?, expression = ?, description = ? WHERE id = ?',
-            [name, expression, description, id]
+            'UPDATE payroll_formulas SET name = ?, expression = ?, description = ?, type = ?, is_active = ? WHERE id = ?',
+            [name, expression, description, type, is_active ? 1 : 0, id]
         );
         res.json({ message: 'Formula updated successfully' });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.patch('/api/formulas/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { is_active, type } = req.body;
+        const updates = [];
+        const params = [];
+        if (is_active !== undefined) {
+            updates.push('is_active = ?');
+            params.push(is_active ? 1 : 0);
+        }
+        if (type !== undefined) {
+            updates.push('type = ?');
+            params.push(type);
+        }
+        if (updates.length > 0) {
+            params.push(id);
+            await pool.query(`UPDATE payroll_formulas SET ${updates.join(', ')} WHERE id = ?`, params);
+        }
+        res.json({ message: 'Formula status updated successfully' });
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -2850,7 +2991,12 @@ async function runMigrations() {
     await ensureColumnExists('system_settings', 'auto_deduct_sso', 'TINYINT(1) DEFAULT 0');
     await ensureColumnExists('system_settings', 'payroll_cutoff_date', 'INT DEFAULT 25');
     await ensureColumnExists('attendance_logs', 'shift_id', 'INT NULL');
-
+    await ensureColumnExists('payroll_formulas', 'type', "VARCHAR(20) DEFAULT 'general'");
+    await ensureColumnExists('payroll_formulas', 'is_active', "TINYINT(1) DEFAULT 1");
+    await ensureColumnExists('payroll_records', 'custom_incomes', "TEXT DEFAULT NULL");
+    await ensureColumnExists('payroll_records', 'custom_deductions', "TEXT DEFAULT NULL");
+    await ensureColumnExists('payroll_records', 'total_custom_incomes', "DECIMAL(10,2) DEFAULT 0.00");
+    await ensureColumnExists('payroll_records', 'total_custom_deductions', "DECIMAL(10,2) DEFAULT 0.00");
 
     // Seed Initial Data
     try {
@@ -2874,6 +3020,20 @@ async function runMigrations() {
                 await pool.query('INSERT INTO leave_types (name, days_per_year, is_unpaid) VALUES (?, ?, ?)', [ct.name, ct.days, ct.unpaid]);
                 console.log(`🌱 Seeded missing core type: ${ct.name}`);
             }
+        }
+
+        // Seed Default Formulas if empty
+        const [existingFormulas] = await pool.query('SELECT id FROM payroll_formulas LIMIT 1');
+        if (existingFormulas.length === 0) {
+            await pool.query(`
+                INSERT INTO payroll_formulas (name, expression, description, type, is_active) VALUES
+                ('ค่าโอที (1.5 เท่า)', '[ชั่วโมง_OT] * ([เงินเดือนฐาน] / 30 / 8) * 1.5', 'คำนวณค่าล่วงเวลาปกติ 1.5 เท่า', 'income', 1),
+                ('เบี้ยขยันประจำเดือน', '[เบี้ยขยัน]', 'เบี้ยขยันตามนโยบายบริษัท', 'income', 1),
+                ('หักประกันสังคม (5%)', '[เงินเดือนฐาน] * 0.05', 'หักเงินสมทบประกันสังคม 5%', 'deduction', 1),
+                ('หักเงินมาสาย', '[นาทีมาสาย] * 5', 'หักเงินค่าปรับมาสายนาทีละ 5 บาท', 'deduction', 1),
+                ('หักลางาน (Unpaid Leave)', '([เงินเดือนฐาน] / 30) * [วันลา]', 'หักเงินตามจำนวนวันลาไม่รับค่าจ้าง', 'deduction', 1)
+            `);
+            console.log('🌱 Seeded default payroll formulas (incomes & deductions)');
         }
     } catch (err) {
         console.warn('⚠️ Seeding error:', err.message);
